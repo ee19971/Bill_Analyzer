@@ -12,7 +12,12 @@
 # Section 导入模块
 import pandas as pd
 import os
-from gong_yong_han_shu import get_time_period, nan, get_mode_info
+from gong_yong_han_shu import (
+    get_time_period,
+    nan,
+    get_mode_info,
+    calculate_financial_extremes  # 新增导入
+)
 
 
 # Section 获取当前工作目录
@@ -39,61 +44,14 @@ zfb = zfb.sort_values(by="发生时间1")
 year = zfb["发生时间"].dt.year.iloc[0]  # 提取年份
 month = zfb["发生时间"].dt.month  # 提取月份
 
-# Section 计算最大支出和最小支出
-max_expense = zfb["支出金额（-元）"].min()  # 最大支出
-max_expense_row = zfb.loc[zfb["支出金额（-元）"] == max_expense].iloc[
-    0
-]  # 最大支出行索引
-max_expense_name = max_expense_row["商品名称"].strip()  # 最大支出商品
-max_expense_type = max_expense_row["业务类型"].strip()  # 最大支出类型
-max_expense_remark = max_expense_row["备注"].strip()  # 最大支出备注
-max_expense_reason = (
-    max_expense_name
-    + ("," if max_expense_name != "" else " ")
-    + max_expense_type
-    + ","
-    + max_expense_remark
-)  # 最大支出原因
 
-# sorted_expense = zfb['支出金额（-元）'].sort_values(ascending=False)  # 计算最小支出
-# min_expense = None
-# for expense in sorted_expense:
-#     if expense < 0.00:
-#         min_expense = expense
-#         break
-# if min_expense is None:
-#     min_expense = 0.00  这是我自己写的下面是通义写的🤣
-
-# 计算最小支出金额（即绝对值最小的负数）
-min_expense = (
-    zfb[zfb["支出金额（-元）"] < 0]["支出金额（-元）"].max() or 0.00
-)  # 最小支出
-
-# Section 计算最大收入和最小收入
-# sorted_income = zfb['收入金额（+元）'].sort_values()  # 计算最小收入
-# min_income = None
-# for income in sorted_income:
-#     if income > 0.00:
-#         min_income = income
-#         break
-# if min_income is None:
-#     min_income = 0.00
-min_income = (
-    zfb[zfb["收入金额（+元）"] > 0]["收入金额（+元）"].min() or 0.00
-)  # 最小收入
-
-max_income = zfb["收入金额（+元）"].max()  # 最大收入
-max_income_row = zfb.loc[zfb["收入金额（+元）"] == max_income].iloc[0]
-max_income_name = max_income_row["商品名称"].strip()  # 最大收入商品
-max_income_type = max_income_row["业务类型"].strip()  # 最大收入类型
-max_income_remark = max_income_row["备注"].strip()  # 最大收入备注
-max_income_reason = (
-    max_income_name
-    + ("," if max_income_name != "" else " ")
-    + max_income_type
-    + ","
-    + max_income_remark
-)  # 最大收入原因
+extremes = calculate_financial_extremes(zfb)
+max_expense = extremes['max_expense']['amount']
+max_expense_reason = extremes['max_expense']['reason']
+min_expense = extremes['min_expense']['amount']
+max_income = extremes['max_income']['amount']
+max_income_reason = extremes['max_income']['reason']
+min_income = extremes['min_income']['amount']
 
 # Section 计算年收入和年支出
 total_income_year = incomes.sum()  # 计算年收入
@@ -112,9 +70,7 @@ earliest = (
     if earliest_row["收入金额（+元）"] == 0.00
     else earliest_row["收入金额（+元）"]
 )  # 最早的一笔交易内容
-transaction_type_1 = (
-    "支出" if earliest < 0 else "收入"
-)  # 判断最早的一笔交易内容是支出还是收入
+transaction_type_1 = ("支出" if earliest < 0 else "收入")  # 判断最早的一笔交易内容是支出还是收入
 
 # 最晚
 latest_row = zfb.iloc[-1]
@@ -126,50 +82,28 @@ latest = (
     if latest_row["收入金额（+元）"] == 0.00
     else latest_row["收入金额（+元）"]
 )  # 最晚的一笔交易内容
-transaction_type_2 = (
-    "支出" if latest < 0 else "收入"
-)  # 判断最晚的一笔交易内容是支出还是收入
+transaction_type_2 = ("支出" if latest < 0 else "收入")  # 判断最晚的一笔交易内容是支出还是收入
 # 提取最小支出和最小收入的月份
-min_expense_month = zfb.loc[
-    zfb["支出金额（-元）"] == min_expense, "发生时间"
-].dt.month.iloc[
-    0
-]  # 最小支出的月份
-max_expense_month = zfb.loc[
-    zfb["支出金额（-元）"] == max_expense, "发生时间"
-].dt.month.iloc[
-    0
-]  # 最大支出的月份
-min_income_month = zfb.loc[
-    zfb["收入金额（+元）"] == min_income, "发生时间"
-].dt.month.iloc[
-    0
-]  # 最小收入的月份
-max_income_month = zfb.loc[
-    zfb["收入金额（+元）"] == max_income, "发生时间"
-].dt.month.iloc[
-    0
-]  # 最大收入的月份
+min_expense_month = zfb.loc[zfb["支出金额（-元）"] == min_expense, "发生时间"].dt.month.iloc[0]  # 最小支出的月份
+max_expense_month = zfb.loc[zfb["支出金额（-元）"] == max_expense, "发生时间"].dt.month.iloc[0]  # 最大支出的月份
+min_income_month = zfb.loc[zfb["收入金额（+元）"] == min_income, "发生时间"].dt.month.iloc[0]  # 最小收入的月份
+max_income_month = zfb.loc[zfb["收入金额（+元）"] == max_income, "发生时间"].dt.month.iloc[0]  # 最大收入的月份
 # 提取最大支出和最大收入的时间
-max_expense_time = zfb.loc[zfb["支出金额（-元）"] == max_expense, "发生时间"].iloc[
-    0
-]  # 最大支出的时间
-max_income_time = zfb.loc[zfb["收入金额（+元）"] == max_income, "发生时间"].iloc[
-    0
-]  # 最大收入的时间
+max_expense_time = zfb.loc[zfb["支出金额（-元）"] == max_expense, "发生时间"].iloc[0]  # 最大支出的时间
+max_income_time = zfb.loc[zfb["收入金额（+元）"] == max_income, "发生时间"].iloc[0]  # 最大收入的时间
 # Section 查看众数
 # 使用 get_mode_info 函数获取众数信息
 mode_number = get_mode_info(zfb["支出金额（-元）"], zfb["收入金额（+元）"])
 
 # Section 总结
 print(
-    f"在{year}年你花了{total_expense_year}元，平均每月花费{average_expense_month:.2f}元\r\n"
+    f"在31天里你花了{total_expense_year}元，平均每月花费{average_expense_month:.2f}元\r\n"
     f"{max_expense_month}月花的最多花了{max_expense}元 {min_expense_month}月花的最少花了{min_expense}元\r\n"
     f"收入{total_income_year}元，平均每月收入{average_income_month:.2f}元\r\n"
     f"{max_income_month}月的收入最多收入了{max_income}元 {min_income_month}月的收入最少是{min_income}元\r\n"
-    f"最早的一笔交易是在{earliest_transaction_date.strftime("%y-%m-%d")}的{shi_jian_1}"
+    f"最早的一笔交易是在{earliest_transaction_date.strftime('%y-%m-%d')}的{shi_jian_1}"
     f"{earliest_transaction_date.strftime("%H:%M:%S")}你{transaction_type_1}了{earliest}元\r\n"
-    f"最晚的一笔交易是在{latest_transaction_date.strftime("%y-%m-%d")}的{shi_jian_2}"
+    f"最晚的一笔交易是在{latest_transaction_date.strftime('%y-%m-%d')}的{shi_jian_2}"
     f"{latest_transaction_date.strftime("%H:%M:%S")}你{transaction_type_2}了{latest}元\r\n"
     f"花费最多是在{max_expense_time}因为{max_expense_reason}花了{max_expense}元\r\n"
     f"最高的收入是在{max_income_time}因为{max_income_reason}收入了{max_income}元\r\n"

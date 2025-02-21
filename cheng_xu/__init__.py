@@ -13,7 +13,7 @@ __version__ = "1.0.0"  # 包版本号
 __author__ = "ee19971"
 __email__ = "3504275453@qq.com"
 # 暴露公共接口
-from .gong_yong_han_shu import get_time_period, nan, get_mode_info
+from .gong_yong_han_shu import get_time_period, get_mode_info
 
 # 定义允许导入的内容
 __all__ = [
