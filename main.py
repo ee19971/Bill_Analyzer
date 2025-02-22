@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-
+import sys, sysconfig
+print(sys._is_gil_enabled())
+print(sysconfig.get_config_var("Py_GIL_DISABLED"))
 
 
 # Section 尾注 开源许可证

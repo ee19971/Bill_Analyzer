@@ -11,5 +11,6 @@
 pyvenv.cfg
 .venv
 .idea
+.vale-styles
 pip-selfcheck.json
 

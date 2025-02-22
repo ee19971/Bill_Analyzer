@@ -98,37 +98,50 @@ def get_mode_info(expenses, incomes):
     return mode_number
 
 
-def calculate_financial_extremes(df: DataFrame) -> Dict[str, Dict[str, Any]]:
+def calculate_financial_extremes(df: DataFrame, name: str, type_: str, remark: str) -> Dict[str, Dict[str, Any]]:
     """计算支付宝账单的收支极值（通用函数版）"""
 
-    def get_extreme_info(data, amount_col, is_income=False):
+    def get_extreme_info(data, name: str, type_: str, remark: str, amount_col, is_income=False, min_=False):
         """获取极值信息（内部函数）"""
+        filtered = data[data[amount_col] != 0]
+        extreme = 0.0
         try:
-            if is_income:
+
+            if is_income and min_:
+                filtered = data[data[amount_col] > 0]
+                extreme = filtered[amount_col].min() if not filtered.empty else 0.00
+            elif is_income:
                 filtered = data[data[amount_col] > 0]
                 extreme = filtered[amount_col].max() if not filtered.empty else 0.00
-            else:
+            if not is_income and not min_:
                 filtered = data[data[amount_col] < 0]
                 extreme = filtered[amount_col].min() if not filtered.empty else 0.00
+            elif not is_income and min_:
+                filtered = data[data[amount_col] < 0]
+                extreme = filtered[amount_col].max() if not filtered.empty else 0.00
 
             row = data.loc[data[amount_col] == extreme].iloc[0] if not filtered.empty else None
 
             if row is not None:
-                name = row["商品名称"].strip()
-                type_ = row["业务类型"].strip()
-                remark = row["备注"].strip()
+                name = row[name].strip()
+                type_ = row[type_].strip()
+                remark = row[remark].strip()
                 reason = f"{name}{',' if name else ' '}{type_},{remark}"
-                return {"amount": abs(extreme), "reason": reason}
+                return {"amount": extreme, "reason": reason}
         except Exception as e:
             print(f"计算极值时发生错误：{str(e)}")
         return {"amount": 0.00, "reason": ""}
 
     return {
-        "max_expense": get_extreme_info(df, "支出金额（-元）"),
-        "min_expense": get_extreme_info(df, "支出金额（-元）", is_income=True),
-        "max_income": get_extreme_info(df, "收入金额（+元）"),
-        "min_income": get_extreme_info(df, "收入金额（+元）", is_income=True)
+        "max_expense": get_extreme_info(df, name=name, type_=type_, remark=remark, amount_col="支出金额（-元）"),
+        "min_expense": get_extreme_info(df, name=name, type_=type_, remark=remark, amount_col="支出金额（-元）",
+                                        min_=True),
+        "max_income": get_extreme_info(df, name=name, type_=type_, remark=remark, amount_col="收入金额（+元）",
+                                       is_income=True),
+        "min_income": get_extreme_info(df, name=name, type_=type_, remark=remark, amount_col="收入金额（+元）",
+                                       is_income=True, min_=True)
     }
+
 
 def search_file_line(filename, keyword, encoding='GB18030'):
     """搜索文本文件返回包含关键字的行号"""
