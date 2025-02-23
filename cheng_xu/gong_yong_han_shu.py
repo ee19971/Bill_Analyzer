@@ -19,7 +19,7 @@
 from pandas import DataFrame
 from typing import Dict, Any
 
-nan = "___"
+nan = "___" # 开发时占位用的空值
 
 
 def get_time_period(hour):
@@ -98,53 +98,121 @@ def get_mode_info(expenses, incomes):
     return mode_number
 
 
-def calculate_financial_extremes(df: DataFrame, name: str, type_: str, remark: str) -> Dict[str, Dict[str, Any]]:
-    """计算支付宝账单的收支极值（通用函数版）"""
+def calculate_financial_extremes(
+        df: DataFrame, name_col: str, type_col: str, remark_col: str,
+        expense_col: str = "支出金额（-元）",
+        income_col: str = "收入金额（+元）"
+) -> Dict[str, Dict[str, Any]]:
+    """
+    计算支付宝账单的收支极值（支持APP/网页双版）
 
-    def get_extreme_info(data, name: str, type_: str, remark: str, amount_col, is_income=False, min_=False):
-        """获取极值信息（内部函数）"""
-        filtered = data[data[amount_col] != 0]
-        extreme = 0.0
+    Args:
+        df (pd.DataFrame): 包含财务数据的DataFrame，必须包含以下列：
+            - 交易时间（datetime类型）
+            - 金额相关列（数值类型）
+        name_col (str): 商品说明/商品名称列名
+        type_col (str): 交易分类/业务类型列名
+        remark_col (str): 备注列名
+        expense_col (str, optional): 支出金额列名，默认适用于网页版
+        income_col (str, optional): 收入金额列名，默认适用于网页版
+
+    Returns:
+        Dict[str, Dict[str, Any]]: 包含极值信息的字典，结构示例：
+        {
+            "max_expense": {
+                "amount": 284.0,
+                "reason": "电动车电池,数码电器,换购新电池"},
+            "min_expense": {
+                "amount": -0.03,
+                "reason": "余额宝收益,理财收益,每日收益"},
+            "max_income": {
+                "amount": 159.0,
+                "reason": "退款成功,交易关闭,商品退货"},
+            "min_income": {
+                "amount": 0.01,
+                "reason": "余额宝收益,理财收益,小额收益"}
+        }
+
+    Raises:
+        KeyError: 当传入的列名在DataFrame中不存在时
+        ValueError: 当金额列包含非数值类型数据时
+
+    Example:
+        >>> df = pd.read_csv('alipay.csv')
+        >>> extremes = calculate_financial_extremes(df, '商品说明', '交易分类', '备注')
+        >>> print(extremes['max_expense']['amount'])
+        284.0
+    """
+    def _get_extreme(data: DataFrame, amount_col: str, is_max: bool, is_income: bool) -> dict:
+        """核心极值计算逻辑（解耦嵌套函数）"""
+        if is_income:
+            amount_col = income_col
+        else:
+            amount_col = expense_col
         try:
-
-            if is_income and min_:
+            # 根据收支类型过滤数据
+            if is_income:
                 filtered = data[data[amount_col] > 0]
-                extreme = filtered[amount_col].min() if not filtered.empty else 0.00
-            elif is_income:
-                filtered = data[data[amount_col] > 0]
-                extreme = filtered[amount_col].max() if not filtered.empty else 0.00
-            if not is_income and not min_:
+                extreme_val = filtered[amount_col].max() if is_max else filtered[amount_col].min()
+            else:
                 filtered = data[data[amount_col] < 0]
-                extreme = filtered[amount_col].min() if not filtered.empty else 0.00
-            elif not is_income and min_:
-                filtered = data[data[amount_col] < 0]
-                extreme = filtered[amount_col].max() if not filtered.empty else 0.00
+                extreme_val = filtered[amount_col].min() if is_max else filtered[amount_col].max()
 
-            row = data.loc[data[amount_col] == extreme].iloc[0] if not filtered.empty else None
+            # 处理空数据情况
+            if filtered.empty:
+                return {"amount": 0.0, "reason": ""}
 
-            if row is not None:
-                name = row[name].strip()
-                type_ = row[type_].strip()
-                remark = row[remark].strip()
-                reason = f"{name}{',' if name else ' '}{type_},{remark}"
-                return {"amount": extreme, "reason": reason}
+            # 获取明细信息
+            row = filtered.loc[filtered[amount_col] == extreme_val].iloc[0]
+            details = [str(row[name_col]).strip(), str(row[type_col]).strip(), str(row[remark_col]).strip()]
+            return {
+                "amount": extreme_val if not is_income else extreme_val,
+                "reason": ",".join(filter(None, details))
+            }
         except Exception as e:
-            print(f"计算极值时发生错误：{str(e)}")
-        return {"amount": 0.00, "reason": ""}
+            print(f"极值计算异常: {str(e)}")
+            return {"amount": 0.0, "reason": ""}
 
+    # 主逻辑流程
     return {
-        "max_expense": get_extreme_info(df, name=name, type_=type_, remark=remark, amount_col="支出金额（-元）"),
-        "min_expense": get_extreme_info(df, name=name, type_=type_, remark=remark, amount_col="支出金额（-元）",
-                                        min_=True),
-        "max_income": get_extreme_info(df, name=name, type_=type_, remark=remark, amount_col="收入金额（+元）",
-                                       is_income=True),
-        "min_income": get_extreme_info(df, name=name, type_=type_, remark=remark, amount_col="收入金额（+元）",
-                                       is_income=True, min_=True)
+        "max_expense": _get_extreme(df, "支出金额（-元）", is_max=True, is_income=False),
+        "min_expense": _get_extreme(df, "支出金额（-元）", is_max=False, is_income=False),
+        "max_income": _get_extreme(df, "收入金额（+元）", is_max=True, is_income=True),
+        "min_income": _get_extreme(df, "收入金额（+元）", is_max=False, is_income=True)
     }
 
 
-def search_file_line(filename, keyword, encoding='GB18030'):
-    """搜索文本文件返回包含关键字的行号"""
+def search_file_line(filename: str, keyword: str, encoding: str = 'GB18030') -> list[dict[str, int]]:
+    """
+    在文本文件中搜索包含指定关键字的行
+
+    Args:
+        filename (str): 要搜索的目标文件路径
+        keyword (str): 需要查找的关键字（区分大小写）
+        encoding (str, optional): 文件编码格式，默认使用GB18030编码
+
+    Returns:
+        list[dict]: 包含匹配结果的字典列表，每个字典包含：
+            - line (int): 行号（从1开始计数）
+            - content (str): 该行的文本内容（去除首尾空白符）
+
+    Raises:
+        FileNotFoundError: 当指定文件不存在时
+        UnicodeDecodeError: 当使用错误编码读取文件时
+
+    Example:
+        >>> results = search_file_line('server.log', 'ERROR')
+        >>> print(results)
+        [
+            {'line': 45, 'content': '2023-05-01 14:22 ERROR: Connection timeout'},
+            {'line': 78, 'content': '2023-05-01 15:17 ERROR: Database connection failed'}
+        ]
+
+    Note:
+        - 适用于日志文件分析等场景
+        - 匹配方式为简单字符串包含检测（非正则表达式）
+        - 大文件建议使用逐行读取方式优化内存
+    """
     results = []
     with open(filename, 'r', encoding=encoding) as f:
         for line_num, line in enumerate(f, 1):
