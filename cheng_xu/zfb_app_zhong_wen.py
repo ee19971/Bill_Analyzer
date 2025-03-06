@@ -119,7 +119,7 @@ mode_number = get_mode_info(expenses=zfb_app["支出金额"], incomes=zfb_app["�
 print(
     f"在{total_duration}天里，你总共花费了{total_expense_year}元，平均每天花费{average_expense_day}元。\r\n"
     f"你总共收入了{total_income_year}元，平均每天收入{average_income_day}元。\r\n"
-    f"不计收支的金额(支付宝转帐，退款，还款等)共为{money_sun}元。\r\n"
+    f"不计收支的金额(部分账单如：充值提现、账户转存或者个人设置收支等不计入为收入或者支出，记为不计收支类)共为{money_sun}元。\r\n"
     f"花费最多的月份是{nan}，共{nan}元。\r\n"
     f"收入最多的月份是{nan}，共{nan}元。\r\n"
     f"{max_expense_day}是你花费最多的一天，花费了{max_expense}元；{min_expense_day}是你花费最少的一天，花费了{min_expense}元。\r\n"
