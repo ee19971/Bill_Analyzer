@@ -19,10 +19,10 @@
 import re
 from pandas import DataFrame
 import pandas as pd
-from typing import Dict, Any
+from typing import Dict, Any, List
 from decimal import Decimal, ROUND_HALF_UP
 
-nan = "___" # 开发时占位用的空值
+nan = "___"  # 开发时占位用的空值
 
 
 def get_time_period(hour: int) -> str:
@@ -186,6 +186,7 @@ def calculate_financial_extremes(
         >>> print(analyze['max_expense']['amount'])
         284.00
     """
+
     def _get_extreme(data: DataFrame, amount_col: str, is_max: bool, is_income: bool) -> dict:
         """核心极值计算逻辑（解耦嵌套函数）"""
         if is_income:
@@ -225,9 +226,9 @@ def calculate_financial_extremes(
     }
 
 
-def search_file_line(filename: str, keyword: str, encoding: str = 'GB18030') -> list[dict[str, int]]:
+def search_file_line(filename: str, keyword: str, encoding: str = 'GB18030') -> List[Dict[str, any]]:
     """
-    在文本文件中搜索包含指定关键字的行
+    在文本文件中搜索包含指定关键字的行，并提取该行中的数字
 
     Args:
         filename (str): 要搜索的目标文件路径
@@ -235,9 +236,10 @@ def search_file_line(filename: str, keyword: str, encoding: str = 'GB18030') -> 
         encoding (str, optional): 文件编码格式，默认使用GB18030编码
 
     Returns:
-        list[dict]: 包含匹配结果的字典列表，每个字典包含：
+        List[Dict]: 包含匹配结果的字典列表，每个字典包含：
             - line (int): 行号（从1开始计数）
             - content (str): 该行的文本内容（去除首尾空白符）
+            - numbers (List[float]): 提取的数字列表
 
     Raises:
         FileNotFoundError: 当指定文件不存在时
@@ -247,29 +249,69 @@ def search_file_line(filename: str, keyword: str, encoding: str = 'GB18030') -> 
         >>> results = search_file_line('server.log', 'ERROR')
         >>> print(results)
         [
-            {'line': 45, 'content': '2023-05-01 14:22 ERROR: Connection timeout'},
-            {'line': 78, 'content': '2023-05-01 15:17 ERROR: Database connection failed'}
+            {'line': 45, 'content': '2023-05-01 14:22 ERROR: Connection timeout 500', 'numbers': [500.0]},
+            {'line': 78, 'content': '2023-05-01 15:17 ERROR: Database connection failed with code 404', 'numbers': [404.0]}
         ]
 
     Note:
         - 适用于日志文件分析等场景
         - 匹配方式为简单字符串包含检测（非正则表达式）
+        - 使用正则表达式提取数字
         - 大文件建议使用逐行读取方式优化内存
     """
     results = []
     with open(filename, 'r', encoding=encoding) as f:
         for line_num, line in enumerate(f, 1):
             if keyword in line:
+                # 提取该行中的所有数字
+                numbers = list(map(float, re.findall(r"[-+]?\d*\.\d+|\d+", line)))
                 results.append({
                     'line': line_num,
-                    'content': line.strip()
+                    'content': line.strip(),
+                    'numbers': numbers
                 })
     return results
 
+
 def clean_amount(raw_value: Any) -> Decimal:
+    """
+    清洗并转换金额数据为高精度Decimal类型
+
+    专为金融场景设计，处理包含货币符号、千分位分隔符等非数字字符的金额字符串，
+    转换为适合精确计算的Decimal类型。
+
+    Args:
+        raw_value (Any): 原始金额数据，可以是字符串/数字/空值等任意类型，
+                         典型格式如："¥1,234.56", "5,000", "-$78.90"
+
+    Returns:
+        Decimal: 清洗后的Decimal数值，规则：
+                - 有效数值: 转换为对应Decimal (如"123.45" → Decimal('123.45'))
+                - 空值/无效值: 返回Decimal(0)
+                - 纯小数点: 返回Decimal(0) (如"." → 0)
+
+    Raises:
+        隐式捕获所有异常并返回Decimal(0)，保证流程稳定性
+
+    Example:
+        >>> clean_amount("￥1,234.56")
+        Decimal('1234.56')
+        >>> clean_amount("5k")
+        Decimal('5')
+        >>> clean_amount(None)
+        Decimal('0')
+        >>> clean_amount("无效金额")
+        Decimal('0')
+
+    Note:
+        - 使用正则表达式 [^\d.-] 过滤非数字字符（保留数字、负号、小数点）
+        - 支持处理科学计数法以外的常见金额格式
+        - 适用于pandas数据清洗管道中的apply操作
+    """
     try:
-        # 修正变量名错误（x → raw_value）
+        # 移除所有非数字、负号和小数点字符（保留原始数值特征）
         cleaned = re.sub(r'[^\d.-]', '', str(raw_value))
+        # 处理空字符串和纯小数点的情况
         return Decimal(cleaned) if cleaned and cleaned != "." else Decimal(0)
     except:
         return Decimal(0)
