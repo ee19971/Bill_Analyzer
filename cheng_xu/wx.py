@@ -171,21 +171,21 @@ def wx_csv(file_path: str) -> str:
 
     # section 输出结果
     return (
-        f"在{total_duration}天里，你有{int(zhi_chu[0])}笔支出共花费了{total_expense_year}元，平均每天花费{average_expense_day}元。\r\n"
-        f"你有{int(shou_ru[0])}笔收入总共{total_income_year}元，平均每天收入{average_income_day}元。\r\n"
-        f"不计收支的金额(充值/提现/理财通购买/零钱通存取/信用卡还款等交易)有{int(zhong_xing_jiao_yi[0])}笔共为{money_sun}元。\r\n"
-        f"花费最多的月份是{max_expense_month_str}，共{max_expense_month_amount}元。\r\n"
-        f"收入最多的月份是{min_income_month_str}，共{min_income_month_amount}元。\r\n"
-        f"{max_expense_day}是你花费最多的一天，花费了{max_expense}元；{min_expense_day}是你花费最少的一天，花费了{min_expense}元。\r\n"
-        f"{max_income_day}是你收入最多的一天，收入了{max_income}元；{max_income_day}是你收入最少的一天，收入了{min_income}元。\r\n"
+        f"在{total_duration}天里，你有{int(zhi_chu[0])}笔支出共花费了{total_expense_year}元，平均每天花费{average_expense_day}元。\n"
+        f"你有{int(shou_ru[0])}笔收入总共{total_income_year}元，平均每天收入{average_income_day}元。\n"
+        f"不计收支的金额(充值/提现/理财通购买/零钱通存取/信用卡还款等交易)有{int(zhong_xing_jiao_yi[0])}笔共为{money_sun}元。\n"
+        f"花费最多的月份是{max_expense_month_str}，共{max_expense_month_amount}元。\n"
+        f"收入最多的月份是{min_income_month_str}，共{min_income_month_amount}元。\n"
+        f"{max_expense_day}是你花费最多的一天，花费了{max_expense}元；{min_expense_day}是你花费最少的一天，花费了{min_expense}元。\n"
+        f"{max_income_day}是你收入最多的一天，收入了{max_income}元；{max_income_day}是你收入最少的一天，收入了{min_income}元。\n"
         f"最早的一笔交易是在{earliest_transaction_date.strftime('%y-%m-%d')}的{shi_jian_1} "
-        f"{earliest_transaction_date.strftime('%H:%M:%S')}，你{transaction_type_1}了{earliest}元。\r\n"
+        f"{earliest_transaction_date.strftime('%H:%M:%S')}，你{transaction_type_1}了{earliest}元。\n"
         f"最晚的一笔交易是在{latest_transaction_date.strftime('%y-%m-%d')}的{shi_jian_2} "
-        f"{latest_transaction_date.strftime('%H:%M:%S')}，你{transaction_type_2}了{latest}元。\r\n"
-        f"\r\n"
-        f"你花费最多的一笔交易是在{max_expense_time}，因为{max_expense_reason}，花费了{max_expense}元。\r\n"
-        f"你收入最多的一笔交易是在{max_income_time}，因为{max_income_reason}，收入了{max_income}元。\r\n"
-        f"{mode_number}"
+        f"{latest_transaction_date.strftime('%H:%M:%S')}，你{transaction_type_2}了{latest}元。\n"
+        f"\n"
+        f"你花费最多的一笔交易是在{max_expense_time}，因为{max_expense_reason}，花费了{max_expense}元。\n"
+        f"你收入最多的一笔交易是在{max_income_time}，因为{max_income_reason}，收入了{max_income}元。\n"
+        f"{mode_number}。"
     )
 
 # Section 尾注 开源许可证

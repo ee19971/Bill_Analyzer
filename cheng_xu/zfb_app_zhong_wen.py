@@ -132,21 +132,21 @@ def zfb_app_zhong_wen_csv(file_path: str)->str:
 
     # section 输出结果
     return (
-        f"在{total_duration}天里，你总共花费了{total_expense_year}元，平均每天花费{average_expense_day}元。\r\n"
-        f"你总共收入了{total_income_year}元，平均每天收入{average_income_day}元。\r\n"
-        f"不计收支的金额(部分账单如：充值提现、账户转存或者个人设置收支等不计入为收入或者支出，记为不计收支类)共为{money_sun}元。\r\n"
-        f"花费最多的月份是{max_expense_month_str}，共{max_expense_month_amount}元。\r\n"
-        f"收入最多的月份是{min_income_month_str}，共{min_income_month_amount}元。\r\n"
-        f"{max_expense_day}是你花费最多的一天，花费了{max_expense}元；{min_expense_day}是你花费最少的一天，花费了{min_expense}元。\r\n"
-        f"{max_income_day}是你收入最多的一天，收入了{max_income}元；{max_income_day}是你收入最少的一天，收入了{min_income}元。\r\n"
+        f"在{total_duration}天里，你总共花费了{total_expense_year}元，平均每天花费{average_expense_day}元。\n"
+        f"你总共收入了{total_income_year}元，平均每天收入{average_income_day}元。\n"
+        f"不计收支的金额(部分账单如：充值提现、账户转存或者个人设置收支等不计入为收入或者支出，记为不计收支类)共为{money_sun}元。\n"
+        f"花费最多的月份是{max_expense_month_str}，共{max_expense_month_amount}元。\n"
+        f"收入最多的月份是{min_income_month_str}，共{min_income_month_amount}元。\n"
+        f"{max_expense_day}是你花费最多的一天，花费了{max_expense}元；{min_expense_day}是你花费最少的一天，花费了{min_expense}元。\n"
+        f"{max_income_day}是你收入最多的一天，收入了{max_income}元；{max_income_day}是你收入最少的一天，收入了{min_income}元。\n"
         f"最早的一笔交易是在{earliest_transaction_date.strftime('%y-%m-%d')}的{shi_jian_1} "
-        f"{earliest_transaction_date.strftime('%H:%M:%S')}，你{transaction_type_1}了{earliest}元。\r\n"
+        f"{earliest_transaction_date.strftime('%H:%M:%S')}，你{transaction_type_1}了{earliest}元。\n"
         f"最晚的一笔交易是在{latest_transaction_date.strftime('%y-%m-%d')}的{shi_jian_2} "
-        f"{latest_transaction_date.strftime('%H:%M:%S')}，你{transaction_type_2}了{latest}元。\r\n"
-        f"\r\n"
-        f"你花费最多的一笔交易是在{max_expense_time}，因为{max_expense_reason}，花费了{max_expense}元。\r\n"
-        f"你收入最多的一笔交易是在{max_income_time}，因为{max_income_reason}，收入了{max_income}元。\r\n"
-        f"{mode_number}"
+        f"{latest_transaction_date.strftime('%H:%M:%S')}，你{transaction_type_2}了{latest}元。\n"
+        f"\n"
+        f"你花费最多的一笔交易是在{max_expense_time}，因为{max_expense_reason}，花费了{max_expense}元。\n"
+        f"你收入最多的一笔交易是在{max_income_time}，因为{max_income_reason}，收入了{max_income}元。\n"
+        f"{mode_number}。"
     )
 
 # Section 尾注 开源许可证
