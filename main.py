@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# todo：添加图形化界面并打包
+# ✔️to-do：添加图形化界面并打包
 # todo：添加汇率转换
 # todo：添加图表可视化
 # todo：支出记账软件的账单
@@ -12,8 +12,8 @@
 
 from cheng_xu import wx_csv, zfb_wy_csv, zfb_app_zhong_wen_csv
 from PIL import Image, ImageDraw, ImageFont, ImageTk
+import sys
 import os
-import tkinter.font as tkfont
 from tkinter import messagebox
 import tkinter as tk
 from tkinter import filedialog, ttk
@@ -25,8 +25,11 @@ class BillAnalyzerUI:
         self.root.title("账单分析工具 v1.0")
         self.root.geometry("800x600")
 
+        # 获取当前工作目录（即 .exe 文件所在目录）
+        current_dir = os.path.dirname(os.path.abspath(sys.argv[0]))  # 使用 sys.argv[0] 获取 .exe 文件路径
+
         # 字体相关初始化
-        self.font_dir = os.path.join(os.path.dirname(__file__), "f_ont")  # 字体目录路径
+        self.font_dir = os.path.join(current_dir, "f_ont")  # 相对路径指向外部的 f_ont 文件夹
         self.default_font = "LXGWNeoXiHeiPlus.ttf"  # 默认字体文件名（含扩展名）
         self.default_font_name = os.path.splitext(self.default_font)[0]  # 去掉扩展名后的默认字体名称
         self.size_var = tk.StringVar(value="15")  # 默认字号
@@ -40,6 +43,7 @@ class BillAnalyzerUI:
 
         # 初始化界面组件
         self.create_ui_components()
+
 
     def validate_default_font(self):
         """验证默认字体文件是否存在"""

@@ -3,34 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <title>项目使用说明书</title>
+    <link rel="icon" href="./fu_jian/favicon.ico" type="image/x-icon">
+    <link rel="shortcut icon" href="./fu_jian/favicon.ico" type="image/x-icon">
     <style>
-        /* 全局样式 */
         body {
             font-family: Arial, sans-serif;
             line-height: 1.6;
-            margin: 0;
+            margin: 20px;
             padding: 0;
             background-color: #f9f9f9;
             color: #333;
         }
 
-        /* 段落样式 */
-        p {
-            font-size: 1rem;
-            margin: 1em 0;
+        h1, h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 5px;
         }
 
-        /* 链接样式 */
-        a {
-            color: #007BFF;
-            text-decoration: none;
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
         }
 
-        a:hover {
-            text-decoration: underline;
+        code {
+            font-family: Consolas, Monaco, 'Andale Mono', monospace;
         }
 
-        /* 页脚样式 */
+        img {
+            display: block;
+            max-width: 90%;
+            margin: 10px auto; /* 上下10px 左右自动居中 */
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 5px;
+            transition: transform 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        details {
+            margin: 15px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+        }
+
+        summary {
+            cursor: pointer;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
         footer {
             margin-top: 2em;
             padding: 1em;
@@ -40,20 +65,217 @@
             font-size: 0.9rem;
         }
 
-        footer a {
+        footer {
+            /* 原有footer样式保持不变 */
+            margin-top: 2em;
+            padding: 1em;
+            background-color: #007BFF;
             color: white;
+            text-align: center;
+            font-size: 0.9rem;
         }
 
-        footer a:hover {
-            text-decoration: underline;
+        /* 新增页脚图片特殊样式 */
+        footer img {
+            display: inline-block !important;
+            vertical-align: middle;
+            margin: 0 3px !important;
+            width: auto !important;
+            max-width: none !important;
+            border: none !important;
+            box-shadow: none !important;
+            transition: none !important; /* 移除悬停动画 */
+        }
+
+        /* 图片容器优化 */
+        img {
+            display: block;
+            max-width: 90%;
+            margin: 10px auto; /* 上下10px 左右自动居中 */
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 5px;
+            transition: transform 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        img:hover {
+            transform: scale(1.10); /* 悬停轻微放大 */
+        }
+
+        /* 步骤图片特殊样式 */
+        .step-image {
+            width: 70%;
+            border-radius: 8px;
+            cursor: zoom-in; /* 提示可放大 */
+        }
+
+        /* 右对齐图片 */
+        .img-right {
+            margin-left: auto;
+            margin-right: 0;
+        }
+
+        /* 左对齐图片 */
+        .img-left {
+            margin-left: 0;
+            margin-right: auto;
         }
     </style>
 </head>
 <body>
-<p>
-    我使用了<a href="https://remixicon.com/">Remix Icon</a>的图标
-    <a href="https://github.com/Remix-Design/RemixIcon/blob/master/License">许可证</a>
-</p>
+<h1>项目使用说明书</h1>
+
+<section id="introduction">
+    <h2>1. 介绍</h2>
+    <p>一款用于解析支付宝/微信账单的Python可视化工具</p>
+    <ul>
+        <li>支持支付宝/微信双平台账单解析</li>
+        <li>月度消费报告生成</li>
+    </ul>
+</section>
+
+<section id="usage">
+    <h2>2. 如何使用</h2>
+    <ul>
+        <li>安装python，项目使用的是python3.13.2</li>
+        <li>安装依赖
+            <pre><code>pip install -r requirements.txt</code></pre>
+        </li>
+        <li>在Bill_Analyzer目录下打开终端输入
+            <pre><code>python main.py</code></pre>
+        </li>
+        <li>运行界面
+            <img src="./fu_jian/tu_pian/lizi.png" alt="运行界面">
+            <p>点击选择文件选择对应的文件，之后点击运行分析。</p>
+        </li>
+    </ul>
+</section>
+
+<section id="download">
+    <h2>3. 账单下载</h2>
+    <details>
+        <summary>支付宝网页版</summary>
+        <p>打开浏览器搜索支付宝然后按照指引操作</p>
+        <img src="./fu_jian/tu_pian/zfb1.png" alt="支付宝网页版步骤1：打开浏览器搜索支付宝"/>
+        <img src="./fu_jian/tu_pian/zfb2.png" alt="支付宝网页版步骤2：进入账单查询页面"/>
+        <img src="./fu_jian/tu_pian/zfb3.png" alt="支付宝网页版步骤3：选择账单类型"/>
+        <p>点击后有二维码登陆</p>
+        <img src="./fu_jian/tu_pian/zfb4.png" alt="支付宝网页版步骤4：扫码登录"/>
+        <p>日账单是按天算的而且只能导出一个月的，月账单可以多下几个月，代码测试是用月账单试的</p>
+        <img src="./fu_jian/tu_pian/zfb5.png" alt="支付宝网页版步骤5：选择账单时间范围"/>
+        <p>账务明细是要分析的账单</p>
+        <img src="./fu_jian/tu_pian/zfb6.png" alt="支付宝网页版步骤6：下载账单文件"/>
+    </details>
+
+    <details>
+        <summary>支付宝App</summary>
+        <p>打开支付宝按照指引操作：</p>
+        <img src="./fu_jian/tu_pian/zfb_app1.png" alt="支付宝App步骤1：打开支付宝进入账单导出功能" class="step-image"
+             style="max-width: 400px;"/>
+        <img src="./fu_jian/tu_pian/zfb_app2.png" alt="支付宝App步骤2：选择账单类型" class="step-image"
+             style="max-width: 400px;"/>
+        <img src="./fu_jian/tu_pian/zfb_app3.png" alt="支付宝App步骤3：设置时间范围" class="step-image"
+             style="max-width: 400px;"/>
+        <img src="./fu_jian/tu_pian/zfb_app4.png" alt="支付宝App步骤4：确认导出请求" class="step-image"
+             style="max-width: 400px;"/>
+        <img src="./fu_jian/tu_pian/zfb_app5.png" alt="支付宝App步骤5：输入接收邮箱" class="step-image"
+             style="max-width: 400px;"/>
+        <p>点击下一步后输入邮箱接收账单压缩包，压缩包有密码会发到支付宝上在消息里查看</p>
+        <img src="./fu_jian/tu_pian/zfb_app6.png" alt="支付宝App步骤6：下载账单流水" class="step-image"
+             style="max-width: 400px;"/>
+    </details>
+
+    <details>
+        <summary>微信</summary>
+        <p>打开微信按照指引操作：</p>
+        <img src="./fu_jian/tu_pian/wx1.png" alt="微信步骤1：进入钱包功能" class="step-image" style="max-width: 400px;"/>
+        <img src="./fu_jian/tu_pian/wx2.png" alt="微信步骤2：选择账单导出" class="step-image" style="max-width: 400px;"/>
+        <img src="./fu_jian/tu_pian/wx3.png" alt="微信步骤3：验证身份" class="step-image" style="max-width: 400px;"/>
+        <img src="./fu_jian/tu_pian/wx4.png" alt="微信步骤4：设置时间范围" class="step-image" style="max-width: 400px;"/>
+        <img src="./fu_jian/tu_pian/wx5.png" alt="微信步骤5：输入接收邮箱" class="step-image" style="max-width: 400px;"/>
+        <img src="./fu_jian/tu_pian/wx6.png" alt="微信步骤6：提交导出请求" class="step-image" style="max-width: 400px;"/>
+        <p>点击下一步后输入邮箱接收账单压缩包，压缩包有密码会发到微信上在消息里查看</p>
+        <img src="./fu_jian/tu_pian/wx7.png" alt="微信步骤7：下载账单流水" class="step-image" style="max-width: 400px;"/>
+    </details>
+</section>
+
+<section id="misc">
+    <h2>4. 杂项</h2>
+    <details>
+        <summary>打包为exe程序</summary>
+        <p>在Bill_Analyzer目录下打开终端输入</p>
+        <pre><code>pip install pyinstaller</code></pre>
+        <pre><code>pyinstaller build.spec</code></pre>
+        打包后在\Bill_Analyzer\dist\BillAnalyzer\_internal文件夹里找到f_ont文件夹，
+        将f_ont文件夹复制到\Bill_Analyzer\dist\BillAnalyzer文件夹⬇️
+        <img src="./fu_jian/tu_pian/yi_dong_hou.png" alt="移动后的样子">
+        双击BillAnalyzer.exe打开程序
+        <ul>
+            <li>f_ont是字体文件夹可以在里面放置自己喜欢的字体运行的时候在字体菜单栏选择</li>
+            <li>Bill_Analyzer\fu_jian\favicon.ico是图标文件可以放置自己喜欢的图标后重命名为favicon.ico</li>
+        </ul>
+    </details>
+    <details>
+        <summary style="cursor: pointer; color: #2c3e50; font-weight: bold;">📦 UPX安装指南（点击展开）</summary>
+        <div style="margin-left: 20px;">
+            <h3 style="color: #3498db;">Windows系统</h3>
+            <ul>
+                <li>🎯 <strong>下载安装包</strong><br>
+                    访问<a href="https://upx.github.io/" target="_blank" style="color: #e74c3c;">UPX官网</a>下载最新Windows版本（如<code>upx-5.0.0-win64.zip</code>）
+                </li>
+                <li>📂 <strong>解压文件</strong>
+                    <pre><code
+                            class="language-powershell">Expand-Archive -Path .\upx-*.zip -DestinationPath C:\upx</code></pre>
+                </li>
+                <li>⚙️ <strong>配置环境变量</strong>
+                    <ol>
+                        <li>右键"此电脑" → 属性 → 高级系统设置 → 环境变量</li>
+                        <li>在系统变量的Path中添加：<code>C:\upx</code></li>
+                    </ol>
+                </li>
+                <li>✅ <strong>验证安装</strong>
+                    <pre><code class="language-cmd">upx --version</code></pre>
+                </li>
+            </ul>
+            <h3 style="color: #3498db;">macOS系统</h3>
+            <div style="background: #f8f9fa; padding: 10px; border-radius: 5px;">
+        <pre><code class="language-bash">
+      # 使用Homebrew安装
+      brew install upx
+      # 验证安装
+      upx --version</code></pre>
+            </div>
+            <h3 style="color: #3498db;">Linux系统</h3>
+            <div style="background: #f8f9fa; padding: 10px; border-radius: 5px;">
+        <pre><code class="language-bash">
+      # Debian/Ubuntu
+      sudo apt install upx-ucl
+      # CentOS/RHEL
+      sudo yum install upx
+      # 验证安装
+      upx --version</code></pre>
+            </div>
+            <h3 style="color: #e67e22;">⚠️ 注意事项</h3>
+            <ul style="list-style-type: '🔔';">
+                <li>推荐安装最新版UPX（当前最新5.0.0）</li>
+                <li>遇到路径问题时使用：
+                    <pre><code class="language-bash">pyinstaller --upx-dir=C:\upx build.spec</code></pre>
+                </li>
+                <li>安装完成后重新执行：
+                    <pre><code class="language-bash">pyinstaller build.spec</code></pre>
+                </li>
+            </ul>
+        </div>
+    </details>
+</section>
+
+<section id="license">
+    <h2>5. 许可信息</h2>
+    <p>包含来自<a href="https://remixicon.com/">Remix Icon</a>的图标资源，遵循其
+        <a href="https://github.com/Remix-Design/RemixIcon/blob/master/License">开源协议</a>
+    </p>
+</section>
 </body>
 <footer>
     <p xmlns:cc="http://creativecommons.org/ns#" xmlns:dct="http://purl.org/dc/terms/"><a property="dct:title"

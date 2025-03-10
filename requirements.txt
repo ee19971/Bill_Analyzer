@@ -1,0 +1,16 @@
+# 核心依赖
+Pillow>=11.1.0  # 图像处理库
+
+# 图形界面
+tkinter  # Python标准库（通常已内置）
+
+# 可选打包依赖（如需生成exe）
+# pyinstaller>=6.12.0
+
+# 数据分析相关（根据cheng_xu模块需要）
+pandas>=2.2.3     # 如果用到数据分析
+openpyxl>=3.1.5   # 如果处理xlsx文件
+xlrd>=2.0.1       # 如果处理旧版xls文件
+
+# 可视化扩展（现在没做）
+matplotlib>=3.10.1 ; python_version >= '3.13'  # 图表功能
