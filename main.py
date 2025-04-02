@@ -7,16 +7,14 @@
 # todo：支出记账软件的账单
 # todo：支持银行app导出的账单
 
-# !/usr/bin/env python
-# -*- coding: utf-8 -*-
-
-from cheng_xu import wx_csv, zfb_wy_csv, zfb_app_zhong_wen_csv
-from PIL import Image, ImageDraw, ImageFont, ImageTk
-import sys
 import os
-from tkinter import messagebox
+import sys
 import tkinter as tk
-from tkinter import filedialog, ttk
+import pandas as pd
+from tkinter import messagebox, filedialog, ttk
+from PIL import Image, ImageDraw, ImageFont, ImageTk
+
+from cheng_xu import wx_csv, zfb_wy_csv, zfb_app_zhong_wen_csv, ci_yun
 
 
 class BillAnalyzerUI:
@@ -26,13 +24,17 @@ class BillAnalyzerUI:
         self.root.geometry("800x600")
 
         # 获取当前工作目录（即 .exe 文件所在目录）
-        current_dir = os.path.dirname(os.path.abspath(sys.argv[0]))  # 使用 sys.argv[0] 获取 .exe 文件路径
+        self.current_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
 
         # 字体相关初始化
-        self.font_dir = os.path.join(current_dir, "f_ont")  # 相对路径指向外部的 f_ont 文件夹
+        self.font_dir = os.path.join(self.current_dir, "f_ont")  # 相对路径指向外部的 f_ont 文件夹
         self.default_font = "LXGWNeoXiHeiPlus.ttf"  # 默认字体文件名（含扩展名）
         self.default_font_name = os.path.splitext(self.default_font)[0]  # 去掉扩展名后的默认字体名称
         self.size_var = tk.StringVar(value="15")  # 默认字号
+        self.file_path_var_main = tk.StringVar()  # 主窗口的文件路径变量
+        self.bill_type = tk.StringVar(value="微信app导出")  # 默认账单类型
+        self.current_text = ""  # 当前显示的文本内容
+        self.current_image = None  # 当前显示的图像
 
         # 验证默认字体是否存在
         if not self.validate_default_font():
@@ -44,6 +46,142 @@ class BillAnalyzerUI:
         # 初始化界面组件
         self.create_ui_components()
 
+        # 菜单栏
+        self.create_menu()
+
+    def create_ui_components(self):
+        """创建界面组件"""
+        # 创建 Notebook 控件
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        # 账单分析标签页
+        self.bill_analysis_frame = tk.Frame(self.notebook)
+        self.notebook.add(self.bill_analysis_frame, text="账单分析")
+        self.create_bill_analysis_ui(self.bill_analysis_frame)
+
+        # 词云生成标签页
+        self.word_cloud_frame = tk.Frame(self.notebook)
+        self.notebook.add(self.word_cloud_frame, text="词云生成")
+        self.create_word_cloud_ui(self.word_cloud_frame)
+
+    def create_bill_analysis_ui(self, parent):
+        """创建账单分析界面"""
+        # 文件路径显示标签
+        tk.Label(parent, textvariable=self.file_path_var_main).pack(pady=10)
+
+        # 主窗口的文件选择按钮
+        tk.Button(parent, text="选择文件", command=self.select_main_file).pack(pady=10)
+
+        # 账单类型选择下拉框
+        ttk.Combobox(
+            parent,
+            textvariable=self.bill_type,
+            values=["微信app导出", "支付宝网页导出", "支付宝APP中文导出"],
+        ).pack(pady=10)
+
+        # 运行分析按钮
+        tk.Button(parent, text="运行分析", command=self.process_file).pack(pady=10)
+
+        # 输出画布
+        self.output_canvas = tk.Canvas(parent, height=400, bg="white")
+        self.output_canvas.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+
+    def create_word_cloud_ui(self, parent):
+        """创建词云生成界面"""
+        # 文件选择按钮
+        tk.Button(
+            parent,
+            text="选择文件",
+            command=self.select_file_for_word_cloud
+        ).pack(pady=10)
+
+        # 文件路径显示标签
+        self.file_path_var_wc = tk.StringVar()
+        tk.Label(
+            parent,
+            textvariable=self.file_path_var_wc
+        ).pack(pady=5)
+
+        # 列名选择组件
+        column_frame = tk.Frame(parent)
+        column_frame.pack(pady=5)
+        tk.Label(column_frame, text="选择列名:").pack(side=tk.LEFT)
+        self.column_combo = ttk.Combobox(
+            column_frame,
+            state="readonly"
+        )
+        self.column_combo.pack(side=tk.LEFT, padx=5)
+
+        # 颜色映射选择组件
+        colormap_frame = tk.Frame(parent)
+        colormap_frame.pack(pady=5)
+        tk.Label(colormap_frame, text="选择颜色映射:").pack(side=tk.LEFT)
+        self.colormap_combo = ttk.Combobox(
+            colormap_frame,
+            state="readonly",
+            values=self.get_colormaps()
+        )
+        self.colormap_combo.current(0)  # 默认选第一个颜色映射
+        self.colormap_combo.pack(side=tk.LEFT, padx=5)
+
+        # 生成词云按钮
+        tk.Button(
+            parent,
+            text="生成词云",
+            command=self.generate_word_cloud
+        ).pack(pady=20)
+
+    def get_colormaps(self):
+        """获取所有可用的颜色映射"""
+        import matplotlib.pyplot as plt
+        return sorted(plt.colormaps())
+
+    def select_main_file(self):
+        """主窗口的文件选择（用于分析账单）"""
+        path = filedialog.askopenfilename(filetypes=[("CSV 文件", "*.csv"), ("Excel 文件", "*.xlsx *.xls")])
+        if path:
+            self.file_path_var_main.set(f"当前文件: {path}")
+
+    def select_file_for_word_cloud(self):
+        """词云窗口的文件选择"""
+        path = filedialog.askopenfilename(filetypes=[("CSV 文件", "*.csv"), ("Excel 文件", "*.xlsx *.xls")])
+        if path:
+            self.file_path_var_wc.set(path)
+            try:
+                # 根据文件扩展名选择合适的读取方法
+                if path.endswith('.csv'):
+                    df = pd.read_csv(path)
+                else:
+                    df = pd.read_excel(path)
+                columns = list(df.columns)
+                self.column_combo['values'] = columns
+                self.column_combo.current(0)  # 默认选第一列
+            except Exception as e:
+                messagebox.showerror("错误", f"文件读取失败: {str(e)}")
+
+    def generate_word_cloud(self):
+        """生成词云"""
+        file_path = self.file_path_var_wc.get()
+        column_name = self.column_combo.get()
+        colormap = self.colormap_combo.get()
+
+        if not file_path:
+            messagebox.showwarning("警告", "请先选择文件")
+            return
+        if not column_name:
+            messagebox.showwarning("警告", "请选择要分析的列")
+            return
+        if not colormap:
+            messagebox.showwarning("警告", "请选择颜色映射")
+            return
+
+        try:
+            # 调用词云生成函数，掩码图像路径设置为 None
+            ci_yun(file_path, column_name, colormap=colormap, file_name=None)
+            messagebox.showinfo("成功", "词云生成成功！")
+        except Exception as e:
+            messagebox.showerror("错误", f"词云生成失败: {str(e)}")
 
     def validate_default_font(self):
         """验证默认字体文件是否存在"""
@@ -75,34 +213,6 @@ class BillAnalyzerUI:
 
         return custom_fonts
 
-    def create_ui_components(self):
-        """创建界面组件"""
-        # 文件路径显示标签
-        self.file_var = tk.StringVar()
-        tk.Label(self.root, textvariable=self.file_var).pack(pady=10)
-
-        # 文件选择按钮
-        tk.Button(self.root, text="选择文件", command=self.select_file).pack(pady=10)
-
-        # 账单类型选择下拉框
-        self.bill_type = tk.StringVar(value="微信app导出")
-        ttk.Combobox(
-            self.root,
-            textvariable=self.bill_type,
-            values=["微信app导出", "支付宝网页导出", "支付宝APP中文导出"],
-        ).pack(pady=10)
-
-        # 运行分析按钮
-        tk.Button(self.root, text="运行分析", command=self.process_file).pack(pady=10)
-
-        # 输出画布
-        self.output_canvas = tk.Canvas(self.root, height=400, bg="white")
-        self.output_canvas.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
-        self.current_image = None
-
-        # 创建菜单栏
-        self.create_menu()
-
     def create_menu(self):
         """创建菜单栏"""
         menu_bar = tk.Menu(self.root)
@@ -133,15 +243,9 @@ class BillAnalyzerUI:
 
         self.root.config(menu=menu_bar)
 
-    def select_file(self):
-        """打开文件选择对话框，并更新文件路径显示"""
-        path = filedialog.askopenfilename()
-        if path:
-            self.file_var.set(f"当前文件: {path}")
-
     def process_file(self):
         """处理账单文件并显示结果"""
-        file_path = self.file_var.get().split(': ')[-1]
+        file_path = self.file_path_var_main.get().split(': ')[-1]
         if not file_path:
             messagebox.showwarning("警告", "请先选择文件")
             return
@@ -218,7 +322,4 @@ if __name__ == "__main__":
     app = BillAnalyzerUI(root)
     root.mainloop()
 
-# Section 尾注 开源许可证
-
-# Bill_Analyzer © 2025 by ee19971 is licensed under Creative Commons Attribution 4.0 International
-# https://creativecommons.org/licenses/by/4.0/
+    # ci_yun(r"C:\test\Bill_Analyzer\微信支付账单1.xlsx", )

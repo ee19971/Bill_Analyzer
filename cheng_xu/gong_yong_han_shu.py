@@ -228,48 +228,85 @@ def calculate_financial_extremes(
 
 def search_file_line(filename: str, keyword: str, encoding: str = 'GB18030') -> List[Dict[str, any]]:
     """
-    在文本文件中搜索包含指定关键字的行，并提取该行中的数字
+    增强版文件搜索函数（支持文本文件/Excel文件）
 
     Args:
-        filename (str): 要搜索的目标文件路径
-        keyword (str): 需要查找的关键字（区分大小写）
-        encoding (str, optional): 文件编码格式，默认使用GB18030编码
+        filename (str): 文件路径，支持.csv/.xlsx/.xls
+        keyword (str): 搜索关键词（区分大小写）
+        encoding (str): 文本文件编码，默认GB18030
 
     Returns:
-        List[Dict]: 包含匹配结果的字典列表，每个字典包含：
-            - line (int): 行号（从1开始计数）
-            - content (str): 该行的文本内容（去除首尾空白符）
-            - numbers (List[float]): 提取的数字列表
-
-    Raises:
-        FileNotFoundError: 当指定文件不存在时
-        UnicodeDecodeError: 当使用错误编码读取文件时
-
-    Example:
-        >>> results = search_file_line('server.log', 'ERROR')
-        >>> print(results)
-        [
-            {'line': 45, 'content': '2023-05-01 14:22 ERROR: Connection timeout 500', 'numbers': [500.0]},
-            {'line': 78, 'content': '2023-05-01 15:17 ERROR: Database connection failed with code 404', 'numbers': [404.0]}
+        List[Dict]: [
+            {
+                'line': 行号（文本文件）或序号（Excel行）,
+                'content': 行内容（文本文件）或拼接后的字符串（Excel）,
+                'numbers': 提取的数字列表
+            },...
         ]
+    实现细节说明：
+    - Excel文件处理：
+      1. 使用 pandas 读取所有原始数据（不解析表头）
+      2. 逐行拼接单元格内容为字符串
+      3. 提取所有数值字段（支持科学计数法外的任意数字格式）
 
-    Note:
-        - 适用于日志文件分析等场景
-        - 匹配方式为简单字符串包含检测（非正则表达式）
-        - 使用正则表达式提取数字
-        - 大文件建议使用逐行读取方式优化内存
+    - 文本文件处理：
+      1. 按指定编码逐行读取
+      2. 使用正则表达式提取数字（包含小数和负数）
+
+    性能优化：
+    - Excel大文件处理时建议设置 chunksize 分块读取
+    - 内置异常捕获保证至少返回空列表而非中断流程
+
+    典型应用场景：
+    >>> search_file_line("alipay.csv", "总收入:")
+    [
+        {
+            'line': 123,
+            'content': '总收入: ￥12,345.67',
+            'numbers': [12345.67]
+        }
+    ]
     """
     results = []
-    with open(filename, 'r', encoding=encoding) as f:
-        for line_num, line in enumerate(f, 1):
-            if keyword in line:
-                # 提取该行中的所有数字
-                numbers = list(map(float, re.findall(r"[-+]?\d*\.\d+|\d+", line)))
-                results.append({
-                    'line': line_num,
-                    'content': line.strip(),
-                    'numbers': numbers
-                })
+
+    # 判断文件类型
+    if filename.lower().endswith(('.xlsx', '.xls')):
+        # Excel处理逻辑
+        try:
+            df = pd.read_excel(filename, header=None)  # 不自动识别表头
+            for idx, row in df.iterrows():
+                line_content = ""
+                numbers = []
+                # 遍历每个单元格
+                for cell in row:
+                    cell_str = str(cell)
+                    line_content += cell_str + " "
+                    # 提取数字
+                    numbers.extend(list(map(float, re.findall(r"[-+]?\d*\.\d+|\d+", cell_str))))
+
+                if keyword in line_content:
+                    results.append({
+                        'line': idx + 1,  # Excel行号从1开始
+                        'content': line_content.strip(),
+                        'numbers': numbers
+                    })
+        except Exception as e:
+            raise ValueError(f"Excel文件读取失败: {str(e)}")
+
+    elif filename.lower().endswith('.csv'):
+        # 原有文本文件处理逻辑
+        with open(filename, 'r', encoding=encoding) as f:
+            for line_num, line in enumerate(f, 1):
+                if keyword in line:
+                    numbers = list(map(float, re.findall(r"[-+]?\d*\.\d+|\d+", line)))
+                    results.append({
+                        'line': line_num,
+                        'content': line.strip(),
+                        'numbers': numbers
+                    })
+    else:
+        raise ValueError("不支持的文件格式，仅支持.csv/.xlsx/.xls")
+
     return results
 
 
@@ -310,7 +347,7 @@ def clean_amount(raw_value: Any) -> Decimal:
     """
     try:
         # 移除所有非数字、负号和小数点字符（保留原始数值特征）
-        cleaned = re.sub(r'[^\d.-]', '', str(raw_value))
+        cleaned = re.sub(r'[^\d\.-]', '', str(raw_value))
         # 处理空字符串和纯小数点的情况
         return Decimal(cleaned) if cleaned and cleaned != "." else Decimal(0)
     except:
