@@ -9,12 +9,23 @@
 
 import os
 import sys
+import re
 import tkinter as tk
 import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib import rcParams
+from matplotlib.font_manager import FontProperties
+from datetime import datetime
 from tkinter import messagebox, filedialog, ttk
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 from cheng_xu import wx_csv, zfb_wy_csv, zfb_app_zhong_wen_csv, ci_yun
+
+BILL_PROCESSORS = {
+    "微信app导出": wx_csv,
+    "支付宝网页导出": zfb_wy_csv,
+    "支付宝APP中文导出": zfb_app_zhong_wen_csv,
+}
 
 
 class BillAnalyzerUI:
@@ -39,6 +50,14 @@ class BillAnalyzerUI:
         # 验证默认字体是否存在
         if not self.validate_default_font():
             return
+
+        if self.validate_default_font():
+            default_font_path = os.path.join(self.font_dir, self.default_font)
+            from matplotlib.font_manager import fontManager
+            fontManager.addfont(default_font_path)  # 预加载默认字体
+            font_prop = FontProperties(fname=default_font_path)
+            plt.rcParams['font.sans-serif'] = [font_prop.get_name()]
+            plt.rcParams['axes.unicode_minus'] = False
 
         # 加载可用字体列表
         self.available_fonts = self.load_custom_fonts()
@@ -132,9 +151,58 @@ class BillAnalyzerUI:
             command=self.generate_word_cloud
         ).pack(pady=20)
 
+        # 保存图片按钮
+        tk.Button(
+            parent,
+            text="保存图片",
+            command=self.save_word_cloud_image
+        ).pack(pady=10)
+
+    def get_safe_filename(self, filename):
+        """将文件名中的不安全字符替换为下划线"""
+        # 使用正则表达式替换不安全字符
+        safe_filename = re.sub(r'[\\/*?:"<>|]', '_', filename)
+        return safe_filename
+
+    def save_word_cloud_image(self):
+        """保存词云图片"""
+        file_path = self.file_path_var_wc.get()
+        column_name = self.column_combo.get()
+        colormap = self.colormap_combo.get()
+
+        if not all([file_path, column_name, colormap]):
+            messagebox.showwarning("警告", "请确保已选择文件、列名和颜色映射")
+            return
+
+        try:
+            # 调用词云生成函数，掩码图像路径设置为 None
+            wordcloud_image = ci_yun(file_path, column_name, colormap=colormap, file_name=None)
+
+            # 动态生成文件名
+            base_file_name = os.path.splitext(os.path.basename(file_path))[0]
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_column_name = self.get_safe_filename(column_name)
+            safe_colormap = self.get_safe_filename(colormap)
+            file_name = f"{base_file_name}_{safe_column_name}_{safe_colormap}_{timestamp}.png"
+
+            # 弹出保存对话框
+            save_path = filedialog.asksaveasfilename(
+                defaultextension=".png",
+                initialfile=file_name,
+                filetypes=[("PNG 文件", "*.png"), ("所有文件", "*.*")]
+            )
+
+            if save_path:
+                wordcloud_image.save(save_path)
+                messagebox.showinfo("成功", f"词云图片已保存：{save_path}")
+            else:
+                messagebox.showinfo("取消", "保存操作已取消")
+
+        except Exception as e:
+            messagebox.showerror("错误", f"保存词云图片失败: {str(e)}")
+
     def get_colormaps(self):
         """获取所有可用的颜色映射"""
-        import matplotlib.pyplot as plt
         return sorted(plt.colormaps())
 
     def select_main_file(self):
@@ -150,10 +218,7 @@ class BillAnalyzerUI:
             self.file_path_var_wc.set(path)
             try:
                 # 根据文件扩展名选择合适的读取方法
-                if path.endswith('.csv'):
-                    df = pd.read_csv(path)
-                else:
-                    df = pd.read_excel(path)
+                df = pd.read_csv(path) if path.endswith('.csv') else pd.read_excel(path)
                 columns = list(df.columns)
                 self.column_combo['values'] = columns
                 self.column_combo.current(0)  # 默认选第一列
@@ -166,19 +231,33 @@ class BillAnalyzerUI:
         column_name = self.column_combo.get()
         colormap = self.colormap_combo.get()
 
-        if not file_path:
-            messagebox.showwarning("警告", "请先选择文件")
-            return
-        if not column_name:
-            messagebox.showwarning("警告", "请选择要分析的列")
-            return
-        if not colormap:
-            messagebox.showwarning("警告", "请选择颜色映射")
+        if not all([file_path, column_name, colormap]):
+            messagebox.showwarning("警告", "请确保已选择文件、列名和颜色映射")
             return
 
         try:
-            # 调用词云生成函数，掩码图像路径设置为 None
-            ci_yun(file_path, column_name, colormap=colormap, file_name=None)
+            # 获取当前字体路径
+            font_name = self.font_var.get()
+            font_path = self.get_font_path(font_name)  # 新增获取字体路径
+            if not font_path:
+                raise ValueError(f"未找到字体文件: {font_name}")
+
+            # 修改ci_yun调用，添加font_path参数
+            wordcloud_image = ci_yun(
+                file_path,
+                column_name,
+                colormap=colormap,
+                file_name=None,
+                font_path=font_path  # 新增字体路径参数
+            )
+
+            # 使用 matplotlib 显示图片
+            plt.figure(figsize=(10, 8))
+            plt.imshow(wordcloud_image)
+            plt.axis("off")  # 隐藏坐标轴
+            plt.title("生成的词云图", fontsize=16)  # 添加标题
+            plt.show()
+
             messagebox.showinfo("成功", "词云生成成功！")
         except Exception as e:
             messagebox.showerror("错误", f"词云生成失败: {str(e)}")
@@ -251,13 +330,8 @@ class BillAnalyzerUI:
             return
 
         try:
-            if self.bill_type.get() == "微信app导出":
-                result = wx_csv(file_path)
-            elif self.bill_type.get() == "支付宝网页导出":
-                result = zfb_wy_csv(file_path)
-            elif self.bill_type.get() == "支付宝APP中文导出":
-                result = zfb_app_zhong_wen_csv(file_path)
-            else:
+            result = BILL_PROCESSORS.get(self.bill_type.get(), lambda x: None)(file_path)
+            if result is None:
                 raise ValueError("未知账单类型")
 
             self.current_text = str(result)[:5000]
@@ -282,6 +356,14 @@ class BillAnalyzerUI:
             font_path = self.get_font_path(font_name)
             if not font_path:
                 raise FileNotFoundError(f"未找到字体文件: {font_name}")
+
+            # 注册并强制刷新字体缓存
+            from matplotlib.font_manager import fontManager
+            fontManager.addfont(font_path)  # 强制注册字体文件
+            font_prop = FontProperties(fname=font_path)
+            plt.rcParams['font.sans-serif'] = [font_prop.get_name()]
+            plt.rcParams['axes.unicode_minus'] = False
+            plt.rcParams.update(plt.rcParams)  # 强制刷新配置
 
             # 加载字体
             image_font = ImageFont.truetype(font_path, font_size)
@@ -322,4 +404,7 @@ if __name__ == "__main__":
     app = BillAnalyzerUI(root)
     root.mainloop()
 
-    # ci_yun(r"C:\test\Bill_Analyzer\微信支付账单1.xlsx", )
+# Section 尾注 开源许可证
+
+# Bill_Analyzer © 2025 by ee19971 is licensed under Creative Commons Attribution 4.0 International
+# https://creativecommons.org/licenses/by/4.0/

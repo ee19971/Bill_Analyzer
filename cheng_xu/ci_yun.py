@@ -20,25 +20,68 @@ import numpy as np
 import matplotlib.colors as mcolors
 import random
 
-def ci_yun(file_path: str, list_name: str = None, file_name: str = None, colormap: str = 'viridis'):
+
+def get_safe_filename(name):
+    """替换非法字符以生成合法文件名"""
+    return name.replace(" ", "_").replace("/", "_")
+
+
+def validate_file_path(file_path, valid_extensions):
+    """验证文件路径是否有效"""
+    if not file_path.lower().endswith(valid_extensions):
+        raise ValueError(f"仅支持以下格式：{', '.join(valid_extensions)}")
+
+
+class WordCloudGenerator:
+    def __init__(self, font_path):
+        self.font_path = font_path
+
+    def generate(self, text_data, mask_image=None, colormap="viridis"):
+        """生成词云图片"""
+        try:
+            cmap = plt.get_cmap(colormap)
+            color_func = lambda *args, **kwargs: mcolors.rgb2hex(cmap(random.random())[:3])
+
+            wordcloud = WordCloud(
+                include_numbers=True,
+                font_path=self.font_path,
+                mask=mask_image,
+                width=1800,
+                height=1600,
+                background_color="black",
+                max_words=2000,
+                max_font_size=200,
+                color_func=color_func
+            ).generate(text_data)
+
+            return wordcloud.to_image()
+
+        except Exception as e:
+            raise RuntimeError(f"生成词云失败：{str(e)}")
+
+
+def ci_yun(file_path: str, list_name: str = None, file_name: str = None, colormap: str = 'viridis',
+           font_path=r".\f_ont\LXGWNeoXiHeiPlus.ttf"):
     """
     生成词云图
+    :param font_path: 自定义字体路径
     :param file_path: 输入文件路径（支持CSV和Excel）
     :param list_name: 要分析的列名
     :param file_name: 掩码图像路径（可选）
     :param colormap: 颜色映射名称（可选，默认为 'viridis'）
+    :return: 生成的词云图片
     """
     # 检查文件扩展名
     valid_extensions = ('.csv', '.xlsx', '.xls')
-    if not file_path.lower().endswith(valid_extensions):
-        raise ValueError("仅支持CSV和Excel文件")
+    validate_file_path(file_path, valid_extensions)
 
     # section 检测文件编码
     encoding_map = ['GB2312', 'GB18030', 'GBK']  # 常见错误编码映射
     with open(file_path, 'rb') as f:
         encoding = detect(f.read(10000))['encoding']
     print(f"文件编码为：{encoding}")
-    if encoding in encoding_map:
+    # 如果检测失败，默认使用 GB18030 编码
+    if not encoding or encoding in encoding_map:
         encoding = 'GB18030'
     print(f"文件编码修正为：{encoding}")
 
@@ -83,37 +126,13 @@ def ci_yun(file_path: str, list_name: str = None, file_name: str = None, colorma
             print(f"加载掩码图像失败：{str(e)}")
 
     # section 生成词云
-    try:
-        font_path = r".\f_ont\LXGWNeoXiHeiPlus.ttf"
-        if not os.path.exists(font_path):
-            raise FileNotFoundError(f"字体文件不存在：{font_path}")
+    if not os.path.exists(font_path):
+        raise FileNotFoundError(f"字体文件不存在：{font_path}")
 
-        # 获取颜色映射
-        cmap = plt.get_cmap(colormap)
-        color_func = lambda *args, **kwargs: mcolors.rgb2hex(cmap(random.random())[:3])
+    generator = WordCloudGenerator(font_path)
+    return generator.generate(text_data, mask_array, colormap)
 
-        wordcloud = WordCloud(
-            include_numbers=True,
-            font_path=font_path,  # 中文字体路径
-            mask=mask_array,
-            width=1800,  # 图片宽度
-            height=1600,  # 图片高度
-            background_color="white",  # 背景色
-            max_words=2000,  # 最大词数
-            max_font_size=200,  # 字体最大值
-            color_func=color_func  # 颜色函数
-        ).generate(text_data)  # 生成词云
+# Section 尾注 开源许可证
 
-        # 保存词云图片
-        output_path = r"..\词云图.png"
-        wordcloud.to_file(output_path)
-        print(f"词云图片已保存到：{output_path}")
-
-    except Exception as e:
-        raise RuntimeError(f"生成词云失败：{str(e)}")
-
-    # section 显示图片
-    plt.figure(figsize=(18, 16))
-    plt.imshow(wordcloud, interpolation="bilinear")
-    plt.axis("off")  # 隐藏坐标轴
-    plt.show()
+# Bill_Analyzer © 2025 by ee19971 is licensed under Creative Commons Attribution 4.0 International
+# https://creativecommons.org/licenses/by/4.0/
