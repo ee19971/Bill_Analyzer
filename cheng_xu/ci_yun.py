@@ -117,13 +117,17 @@ def ci_yun(file_path: str, list_name: str = None, file_name: str = None, colorma
 
     # section 加载掩码图像
     mask_array = None
-    if file_name and os.path.exists(file_name):
+    if file_name:  # 修改判断逻辑 ▼▼▼
         try:
+            if not os.path.exists(file_name):
+                raise FileNotFoundError(f"掩码图像不存在: {file_name}")
+
             mask_image = Image.open(file_name)
             mask_array = np.array(mask_image)
             print(f"成功加载掩码图像：{file_name}")
-        except (UnidentifiedImageError, FileNotFoundError) as e:
-            print(f"加载掩码图像失败：{str(e)}")
+
+        except Exception as e:
+            print(f"[错误] 加载掩码图像失败: {str(e)}")
 
     # section 生成词云
     if not os.path.exists(font_path):

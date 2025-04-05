@@ -61,10 +61,12 @@ class BillAnalyzerUI:
 
         # 加载可用字体列表
         self.available_fonts = self.load_custom_fonts()
-
+        # 保存当前词云对象
+        self.current_wordcloud_image = None
+        # 新增掩码路径变量
+        self.mask_image_path = tk.StringVar()
         # 初始化界面组件
         self.create_ui_components()
-
         # 菜单栏
         self.create_menu()
 
@@ -144,6 +146,21 @@ class BillAnalyzerUI:
         self.colormap_combo.current(0)  # 默认选第一个颜色映射
         self.colormap_combo.pack(side=tk.LEFT, padx=5)
 
+        # 掩码图像选择组件
+        mask_frame = tk.Frame(parent)
+        mask_frame.pack(pady=5)
+        tk.Button(
+            mask_frame,
+            text="选择掩码图",
+            command=self.select_mask_image
+        ).pack(side=tk.LEFT)
+        # 路径显示标签
+        self.mask_image_path = tk.StringVar()
+        tk.Label(
+            parent,
+            textvariable=self.mask_image_path
+        ).pack(pady=5)
+
         # 生成词云按钮
         tk.Button(
             parent,
@@ -164,8 +181,20 @@ class BillAnalyzerUI:
         safe_filename = re.sub(r'[\\/*?:"<>|]', '_', filename)
         return safe_filename
 
+    def select_mask_image(self):
+        """选择掩码图像文件"""
+        path = filedialog.askopenfilename(
+            filetypes=[("图片文件", "*.png *.jpg *.jpeg")]
+        )
+        if path:
+            # 显示完整路径
+            self.mask_image_path.set(path)
+
     def save_word_cloud_image(self):
         """保存词云图片"""
+        if not self.current_wordcloud_image:  # 增加空值检查
+            messagebox.showwarning("警告", "请先生成词云")
+            return
         file_path = self.file_path_var_wc.get()
         column_name = self.column_combo.get()
         colormap = self.colormap_combo.get()
@@ -175,9 +204,6 @@ class BillAnalyzerUI:
             return
 
         try:
-            # 调用词云生成函数，掩码图像路径设置为 None
-            wordcloud_image = ci_yun(file_path, column_name, colormap=colormap, file_name=None)
-
             # 动态生成文件名
             base_file_name = os.path.splitext(os.path.basename(file_path))[0]
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -191,10 +217,10 @@ class BillAnalyzerUI:
                 initialfile=file_name,
                 filetypes=[("PNG 文件", "*.png"), ("所有文件", "*.*")]
             )
-
             if save_path:
-                wordcloud_image.save(save_path)
-                messagebox.showinfo("成功", f"词云图片已保存：{save_path}")
+                if self.current_wordcloud_image:
+                    self.current_wordcloud_image.save(save_path)
+                    messagebox.showinfo("成功", f"词云图片已保存：{save_path}")
             else:
                 messagebox.showinfo("取消", "保存操作已取消")
 
@@ -243,17 +269,18 @@ class BillAnalyzerUI:
                 raise ValueError(f"未找到字体文件: {font_name}")
 
             # 修改ci_yun调用，添加font_path参数
-            wordcloud_image = ci_yun(
+            self.current_wordcloud_image = ci_yun(
                 file_path,
                 column_name,
+                file_name=self.mask_image_path.get() or None,  # 传递掩码路径
                 colormap=colormap,
-                file_name=None,
-                font_path=font_path  # 新增字体路径参数
+                font_path=font_path
             )
 
+            plt.imshow(self.current_wordcloud_image)  # 显示已保存的词云
             # 使用 matplotlib 显示图片
             plt.figure(figsize=(10, 8))
-            plt.imshow(wordcloud_image)
+            plt.imshow(self.current_wordcloud_image)
             plt.axis("off")  # 隐藏坐标轴
             plt.title("生成的词云图", fontsize=16)  # 添加标题
             plt.show()
