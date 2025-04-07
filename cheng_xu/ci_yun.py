@@ -11,14 +11,14 @@
 # ------------------------------------------------------------------------------
 # section 导入包
 import os
-import pandas as pd
-from wordcloud import WordCloud
-import matplotlib.pyplot as plt
-from chardet import detect
-from PIL import Image, UnidentifiedImageError
+import random
 import numpy as np
 import matplotlib.colors as mcolors
-import random
+import pandas as pd
+import matplotlib.pyplot as plt
+from wordcloud import WordCloud
+from chardet import detect
+from PIL import Image, UnidentifiedImageError
 
 
 def get_safe_filename(name):

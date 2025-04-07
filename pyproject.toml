@@ -5,10 +5,11 @@ description = "在此处添加您的描述"
 requires-python = ">=3.13"
 dependencies = [
     "black==25.1.0",
-    "bokeh==3.7.2",
+    "bokeh>=3.7.2",
     "chardet>=5.2.0",
     "fonttools==4.57.0",
     "imageio>=2.37.0",
+    "kaleido==0.4.2",
     "matplotlib==3.10.1",
     "numpy==2.2.4",
     "openpyxl==3.1.5",
@@ -19,7 +20,9 @@ dependencies = [
     "pyinstaller==6.12.0",
     "pyinstaller-hooks-contrib==2025.2",
     "python-tkdnd==0.2.1",
+    "scipy>=1.15.2",
     "setuptools==78.1.0",
+    "snapshot-selenium==0.0.2",
     "tzdata==2025.2",
     "wordcloud==1.9.4",
     "xlrd==2.0.1",
