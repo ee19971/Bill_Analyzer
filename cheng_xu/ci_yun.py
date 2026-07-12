@@ -6,41 +6,130 @@
 # @时间：2025年03月11日15:41
 # @作者：ee19971
 # @邮箱：3504275453@qq.com
-# @作用：Bill_Analyzer项目${生成账单选定列的词云图}
+# @作用：Bill_Analyzer项目 - 生成账单选定列的词云图
 
 # ------------------------------------------------------------------------------
-# section 导入包
+"""
+词云生成模块
+
+根据账单文件中指定列的文本数据生成词云图片，
+支持自定义掩码图和颜色映射。
+"""
 import os
 import random
+import logging
 import numpy as np
 import matplotlib.colors as mcolors
 import pandas as pd
 import matplotlib.pyplot as plt
 from wordcloud import WordCloud
 from chardet import detect
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
+
+logger = logging.getLogger(__name__)
 
 
-def get_safe_filename(name):
-    """替换非法字符以生成合法文件名"""
+def get_safe_filename(name: str) -> str:
+    """替换非法字符以生成合法文件名
+
+    Args:
+        name: 原始文件名
+
+    Returns:
+        str: 替换空格和斜杠后的安全文件名
+    """
     return name.replace(" ", "_").replace("/", "_")
 
 
-def validate_file_path(file_path, valid_extensions):
-    """验证文件路径是否有效"""
+def validate_file_path(file_path: str, valid_extensions: tuple) -> None:
+    """验证文件路径是否有效
+
+    Args:
+        file_path: 文件路径
+        valid_extensions: 允许的文件扩展名元组
+
+    Raises:
+        ValueError: 文件格式不支持
+    """
     if not file_path.lower().endswith(valid_extensions):
         raise ValueError(f"仅支持以下格式：{', '.join(valid_extensions)}")
 
 
+def _detect_encoding(file_path: str) -> str:
+    """自动检测文件编码
+
+    优先使用 chardet 检测，若检测为中文常见编码（GB2312/GBK）则统一使用 GB18030。
+
+    Args:
+        file_path: 文件路径
+
+    Returns:
+        str: 检测到的文件编码
+    """
+    chinese_encodings = {'GB2312', 'GB18030', 'GBK'}
+    with open(file_path, 'rb') as f:
+        detected = detect(f.read(10000))['encoding']
+
+    if not detected or detected in chinese_encodings:
+        return 'GB18030'
+    return detected
+
+
+def _read_data_file(file_path: str, encoding: str) -> pd.DataFrame:
+    """根据文件扩展名读取数据
+
+    Args:
+        file_path: 文件路径
+        encoding: 文件编码
+
+    Returns:
+        pd.DataFrame: 读取的数据
+
+    Raises:
+        ValueError: 文件格式不支持或读取失败
+    """
+    try:
+        if file_path.endswith('.csv'):
+            return pd.read_csv(file_path, encoding=encoding)
+        elif file_path.endswith(('.xlsx', '.xls')):
+            return pd.read_excel(file_path)
+        else:
+            raise ValueError("不支持的文件格式")
+    except (UnicodeDecodeError, KeyError) as e:
+        raise ValueError(f"读取文件失败: {str(e)}")
+
+
 class WordCloudGenerator:
-    def __init__(self, font_path):
+    """词云生成器类，封装词云图片的生成逻辑"""
+
+    def __init__(self, font_path: str):
+        """初始化词云生成器
+
+        Args:
+            font_path: 字体文件路径
+        """
         self.font_path = font_path
 
-    def generate(self, text_data, mask_image=None, colormap="viridis"):
-        """生成词云图片"""
+    def generate(self, text_data: str, mask_image=None, colormap: str = "viridis") -> Image.Image:
+        """生成词云图片
+
+        Args:
+            text_data: 用于生成词云的文本数据
+            mask_image: 掩码图像数组（可选），控制词云形状
+            colormap: matplotlib 颜色映射名称
+
+        Returns:
+            PIL.Image: 生成的词云图片
+
+        Raises:
+            RuntimeError: 词云生成失败
+        """
         try:
             cmap = plt.get_cmap(colormap)
-            color_func = lambda *args, **kwargs: mcolors.rgb2hex(cmap(random.random())[:3])
+            # 使用颜色映射生成随机颜色函数
+            color_func = lambda *args, **kwargs: mcolors.rgb2hex(
+                cmap(random.random())[:3]
+            )
 
             wordcloud = WordCloud(
                 include_numbers=True,
@@ -51,7 +140,7 @@ class WordCloudGenerator:
                 background_color="black",
                 max_words=2000,
                 max_font_size=200,
-                color_func=color_func
+                color_func=color_func,
             ).generate(text_data)
 
             return wordcloud.to_image()
@@ -60,81 +149,60 @@ class WordCloudGenerator:
             raise RuntimeError(f"生成词云失败：{str(e)}")
 
 
-def ci_yun(file_path: str, list_name: str = None, file_name: str = None, colormap: str = 'viridis',
-           font_path=r".\f_ont\LXGWNeoXiHeiPlus.ttf"):
+def ci_yun(file_path: str, list_name: str = None, file_name: str = None,
+           colormap: str = 'viridis',
+           font_path=r".\f_ont\LXGWNeoXiHeiPlus.ttf") -> Image.Image:
+    """生成词云图的主入口函数
+
+    Args:
+        file_path: 输入文件路径（支持CSV和Excel）
+        list_name: 要分析的列名
+        file_name: 掩码图像路径（可选）
+        colormap: 颜色映射名称（可选，默认为 'viridis'）
+        font_path: 自定义字体路径
+
+    Returns:
+        PIL.Image: 生成的词云图片
+
+    Raises:
+        ValueError: 文件格式不支持或列名不存在
+        FileNotFoundError: 字体文件或掩码文件不存在
     """
-    生成词云图
-    :param font_path: 自定义字体路径
-    :param file_path: 输入文件路径（支持CSV和Excel）
-    :param list_name: 要分析的列名
-    :param file_name: 掩码图像路径（可选）
-    :param colormap: 颜色映射名称（可选，默认为 'viridis'）
-    :return: 生成的词云图片
-    """
-    # 检查文件扩展名
-    valid_extensions = ('.csv', '.xlsx', '.xls')
-    validate_file_path(file_path, valid_extensions)
+    # 验证文件格式
+    validate_file_path(file_path, ('.csv', '.xlsx', '.xls'))
 
-    # section 检测文件编码
-    encoding_map = ['GB2312', 'GB18030', 'GBK']  # 常见错误编码映射
-    with open(file_path, 'rb') as f:
-        encoding = detect(f.read(10000))['encoding']
-    print(f"文件编码为：{encoding}")
-    # 如果检测失败，默认使用 GB18030 编码
-    if not encoding or encoding in encoding_map:
-        encoding = 'GB18030'
-    print(f"文件编码修正为：{encoding}")
+    # 检测文件编码并读取数据
+    encoding = _detect_encoding(file_path)
+    logger.debug("文件编码: %s", encoding)
 
-    # section 读取文件
-    try:
-        if file_path.endswith('.csv'):
-            # CSV文件处理逻辑
-            df = pd.read_csv(file_path, encoding=encoding)
-        elif file_path.endswith(('.xlsx', '.xls')):
-            # Excel文件直接读取
-            df = pd.read_excel(file_path)
-        else:
-            raise ValueError("不支持的文件格式")
+    df = _read_data_file(file_path, encoding)
 
-        # 确保列名存在
-        if list_name not in df.columns:
-            raise KeyError(f"列名 '{list_name}' 不存在于文件中，请检查列名是否正确。")
+    # 验证列名
+    if list_name not in df.columns:
+        raise KeyError(f"列名 '{list_name}' 不存在于文件中，请检查列名是否正确。")
 
-        # 将列数据转换为字符串类型
-        df[list_name] = df[list_name].astype(str)
-
-    except (UnicodeDecodeError, KeyError) as e:
-        raise ValueError(f"读取文件失败: {str(e)}")
-
-    # section 数据预处理
-    # 合并非空文本
-    text_data = " ".join(df[list_name].dropna())
-    print(f"提取的文本数据（原始）：\n{text_data[:100]}...")  # 打印前100个字符以供调试
-
-    # 替换 * 和 . 为 _
+    # 数据预处理：合并非空文本并替换特殊字符
+    text_data = " ".join(df[list_name].astype(str).dropna())
     text_data = text_data.replace('*', '_').replace('.', '_')
-    print(f"提取的文本数据（处理后）：\n{text_data[:100]}...")  # 打印前100个字符以供调试
 
-    # section 加载掩码图像
+    # 加载掩码图像（可选）
     mask_array = None
-    if file_name:  # 修改判断逻辑 ▼▼▼
+    if file_name:
         try:
             if not os.path.exists(file_name):
                 raise FileNotFoundError(f"掩码图像不存在: {file_name}")
-
-            mask_image = Image.open(file_name)
-            mask_array = np.array(mask_image)
-            print(f"成功加载掩码图像：{file_name}")
-
+            mask_array = np.array(Image.open(file_name))
+            logger.debug("成功加载掩码图像: %s", file_name)
         except Exception as e:
-            print(f"[错误] 加载掩码图像失败: {str(e)}")
+            logger.warning("加载掩码图像失败: %s", e)
 
-    # section 生成词云
+    # 验证字体并生成词云
     if not os.path.exists(font_path):
         raise FileNotFoundError(f"字体文件不存在：{font_path}")
 
     generator = WordCloudGenerator(font_path)
     return generator.generate(text_data, mask_array, colormap)
+
 
 # Section 尾注 开源许可证
 

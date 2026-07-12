@@ -10,17 +10,23 @@
 
 # ------------------------------------------------------------------------------
 """
-账单分析工具包
+账单分析工具包 - 公共函数模块
 
-包含以下模块：
-- gong_yong_han_shu: 公共时间处理函数
-- nan: 开发时占位用的空值
+提供各账单处理器共用的工具函数，包括：
+- 时间段划分
+- 众数计算
+- 金融极值分析
+- 文件关键词搜索
+- 金额清洗与高精度求和
 """
 import re
+import logging
 from pandas import DataFrame
 import pandas as pd
 from typing import Dict, Any, List
 from decimal import Decimal, ROUND_HALF_UP
+
+logger = logging.getLogger(__name__)
 
 nan = "___"  # 开发时占位用的空值
 
@@ -46,20 +52,22 @@ def get_time_period(hour: int) -> str:
         >>> get_time_period(13)
         '下午'
     """
-    if 0 <= hour < 6:
-        return "凌晨"
-    elif 6 <= hour < 9:
-        return "早上"
-    elif 9 <= hour < 12:
-        return "上午"
-    elif hour == 12:
-        return "中午"
-    elif 13 <= hour < 18:
-        return "下午"
-    elif 18 <= hour < 20:
-        return "傍晚"
-    else:
-        return "晚上"
+    if not 0 <= hour <= 23:
+        raise ValueError(f"小时数必须在0-23之间，收到: {hour}")
+
+    periods = [
+        (0, 6, "凌晨"),
+        (6, 9, "早上"),
+        (9, 12, "上午"),
+        (12, 13, "中午"),
+        (13, 18, "下午"),
+        (18, 20, "傍晚"),
+        (20, 24, "晚上"),
+    ]
+    for start, end, label in periods:
+        if start <= hour < end:
+            return label
+    return "晚上"
 
 
 def get_mode_info(expenses: pd.Series, incomes: pd.Series) -> str:
@@ -75,15 +83,7 @@ def get_mode_info(expenses: pd.Series, incomes: pd.Series) -> str:
         incomes (pd.Series): 收入金额列，包含正数值。
 
     Returns:
-        str: 包含众数信息的字符串，格式如下：
-            - 如果支出金额的众数出现次数多于收入金额的众数：
-              "支出{expense_mode} 出现了 {expense_Number_of_occurrences} 次"
-            - 如果收入金额的众数出现次数多于支出金额的众数：
-              "收入{incomes_mode} 出现了 {incomes_Number_of_occurrences} 次"
-            - 如果支出和收入的众数出现次数相同：
-              "支出金额 {expense_mode} 和收入金额 {incomes_mode} 出现次数相同，均为 {expense_Number_of_occurrences} 次"
-            - 如果没有有效的支出或收入金额：
-              "没有有效的支出或收入金额"
+        str: 包含众数信息的字符串
 
     Raises:
         TypeError: 如果输入不是Pandas Series对象。
@@ -94,49 +94,34 @@ def get_mode_info(expenses: pd.Series, incomes: pd.Series) -> str:
         >>> get_mode_info(expenses, incomes)
         '支出-50 出现了 2 次'
     """
-    # 计算众数
+    # 分别计算支出（负值）和收入（正值）的众数
     expense_mode_series = expenses[expenses < 0].mode()
     incomes_mode_series = incomes[incomes > 0].mode()
 
-    # 检查众数是否存在
-    if not expense_mode_series.empty:
-        expense_mode = expense_mode_series.iloc[0]
-    else:
-        expense_mode = None
-
-    if not incomes_mode_series.empty:
-        incomes_mode = incomes_mode_series.iloc[0]
-    else:
-        incomes_mode = None
-
-    # 使用 value_counts() 方法查看每个值的出现次数
-    expense_value_counts = expenses.value_counts()
-    incomes_value_counts = incomes.value_counts()
+    expense_mode = expense_mode_series.iloc[0] if not expense_mode_series.empty else None
+    incomes_mode = incomes_mode_series.iloc[0] if not incomes_mode_series.empty else None
 
     # 获取众数的出现次数
-    expense_Number_of_occurrences = expense_value_counts.get(expense_mode, 0)
-    incomes_Number_of_occurrences = incomes_value_counts.get(incomes_mode, 0)
+    expense_counts = expenses.value_counts().get(expense_mode, 0)
+    incomes_counts = incomes.value_counts().get(incomes_mode, 0)
 
     # 构建结果字符串
     if expense_mode is not None and incomes_mode is not None:
-        if expense_Number_of_occurrences > incomes_Number_of_occurrences:
-            mode_number = (
-                f"支出{expense_mode} 出现了 {expense_Number_of_occurrences} 次"
-            )
-        elif incomes_Number_of_occurrences > expense_Number_of_occurrences:
-            mode_number = (
-                f"收入{incomes_mode} 出现了 {incomes_Number_of_occurrences} 次"
-            )
+        if expense_counts > incomes_counts:
+            return f"支出{expense_mode} 出现了 {expense_counts} 次"
+        elif incomes_counts > expense_counts:
+            return f"收入{incomes_mode} 出现了 {incomes_counts} 次"
         else:
-            mode_number = f"支出金额 {expense_mode} 和收入金额 {incomes_mode} 出现次数相同，均为 {expense_Number_of_occurrences} 次"
+            return (
+                f"支出金额 {expense_mode} 和收入金额 {incomes_mode} "
+                f"出现次数相同，均为 {expense_counts} 次"
+            )
     elif expense_mode is not None:
-        mode_number = f"支出{expense_mode} 出现了 {expense_Number_of_occurrences} 次"
+        return f"支出{expense_mode} 出现了 {expense_counts} 次"
     elif incomes_mode is not None:
-        mode_number = f"收入{incomes_mode} 出现了 {incomes_Number_of_occurrences} 次"
+        return f"收入{incomes_mode} 出现了 {incomes_counts} 次"
     else:
-        mode_number = "没有有效的支出或收入金额"
-
-    return mode_number
+        return "没有有效的支出或收入金额"
 
 
 def calculate_financial_extremes(
@@ -154,81 +139,74 @@ def calculate_financial_extremes(
     - 最大/最小单笔收入
     - 关联交易描述信息
 
-    Design:
-        - 支持支付宝APP/网页版双模式
-        - 自动处理空值和异常数据
-        - 提供可解释的交易原因
-
     Args:
-        df (pd.DataFrame): 包含完整交易数据的DataFrame，需包含：
-            - 交易时间 (datetime类型)
-            - 至少一个金额字段 (数值类型)
+        df (pd.DataFrame): 包含完整交易数据的DataFrame
         name_col (str): 商品/交易名称字段名
         type_col (str): 交易分类字段名
         remark_col (str): 备注信息字段名
-        expense_col (str, optional): 支出金额字段名，默认"支出金额（-元）"
-        income_col (str, optional): 收入金额字段名，默认"收入金额（+元）"
+        expense_col (str): 支出金额字段名，默认"支出金额（-元）"
+        income_col (str): 收入金额字段名，默认"收入金额（+元）"
 
     Returns:
         Dict: 结构化极值分析结果，包含：
-            - max_expense: 最大支出 {amount: 金额, reason: 原因描述}
-            - min_expense: 最小支出（负向极值）
+            - max_expense: 最大支出 {amount, reason}
+            - min_expense: 最小支出
             - max_income: 最大收入
             - min_income: 最小收入
-
-    Raises:
-        KeyError: 必要字段缺失时
-        TypeError: 金额字段包含非数值数据时
-
-    Example:
-        >>> df = pd.read_csv('alipay.csv')
-        >>> analyze = calculate_financial_extremes(df, '商品', '类型', '备注')
-        >>> print(analyze['max_expense']['amount'])
-        284.00
     """
 
     def _get_extreme(data: DataFrame, amount_col: str, is_max: bool, is_income: bool) -> dict:
-        """核心极值计算逻辑（解耦嵌套函数）"""
-        if is_income:
-            amount_col = income_col
-        else:
-            amount_col = expense_col
-        try:
-            # 根据收支类型过滤数据
-            if is_income:
-                filtered = data[data[amount_col] > 0]
-                extreme_val = filtered[amount_col].max() if is_max else filtered[amount_col].min()
-            else:
-                filtered = data[data[amount_col] < 0]
-                extreme_val = filtered[amount_col].min() if is_max else filtered[amount_col].max()
+        """核心极值计算逻辑
 
-            # 处理空数据情况
+        Args:
+            data: 交易数据DataFrame
+            amount_col: 金额列名（会被 is_income 覆盖）
+            is_max: 是否取最大值（False则取最小值）
+            is_income: 是否为收入类型
+
+        Returns:
+            dict: {'amount': 极值金额, 'reason': 交易描述}
+        """
+        actual_col = income_col if is_income else expense_col
+        try:
+            # 根据收支类型过滤数据并计算极值
+            if is_income:
+                filtered = data[data[actual_col] > 0]
+                extreme_val = filtered[actual_col].max() if is_max else filtered[actual_col].min()
+            else:
+                filtered = data[data[actual_col] < 0]
+                extreme_val = filtered[actual_col].min() if is_max else filtered[actual_col].max()
+
             if filtered.empty:
                 return {"amount": 0.0, "reason": ""}
 
-            # 获取明细信息
-            row = filtered.loc[filtered[amount_col] == extreme_val].iloc[0]
-            details = [str(row[name_col]).strip(), str(row[type_col]).strip(), str(row[remark_col]).strip()]
+            # 获取极值对应行的明细信息
+            row = filtered.loc[filtered[actual_col] == extreme_val].iloc[0]
+            details = [
+                str(row[name_col]).strip(),
+                str(row[type_col]).strip(),
+                str(row[remark_col]).strip(),
+            ]
             return {
-                "amount": extreme_val if not is_income else extreme_val,
-                "reason": ",".join(filter(None, details))
+                "amount": extreme_val,
+                "reason": ",".join(filter(None, details)),
             }
         except Exception as e:
-            print(f"极值计算异常: {str(e)}")
+            logger.warning("极值计算异常: %s", e)
             return {"amount": 0.0, "reason": ""}
 
-    # 主逻辑流程
     return {
-        "max_expense": _get_extreme(df, "支出金额（-元）", is_max=True, is_income=False),
-        "min_expense": _get_extreme(df, "支出金额（-元）", is_max=False, is_income=False),
-        "max_income": _get_extreme(df, "收入金额（+元）", is_max=True, is_income=True),
-        "min_income": _get_extreme(df, "收入金额（+元）", is_max=False, is_income=True)
+        "max_expense": _get_extreme(df, expense_col, is_max=True, is_income=False),
+        "min_expense": _get_extreme(df, expense_col, is_max=False, is_income=False),
+        "max_income": _get_extreme(df, income_col, is_max=True, is_income=True),
+        "min_income": _get_extreme(df, income_col, is_max=False, is_income=True),
     }
 
 
 def search_file_line(filename: str, keyword: str, encoding: str = 'GB18030') -> List[Dict[str, any]]:
-    """
-    增强版文件搜索函数（支持文本文件/Excel文件）
+    """增强版文件搜索函数（支持文本文件/Excel文件）
+
+    在文件中搜索包含指定关键词的行，并提取行内所有数字。
 
     Args:
         filename (str): 文件路径，支持.csv/.xlsx/.xls
@@ -236,73 +214,40 @@ def search_file_line(filename: str, keyword: str, encoding: str = 'GB18030') -> 
         encoding (str): 文本文件编码，默认GB18030
 
     Returns:
-        List[Dict]: [
-            {
-                'line': 行号（文本文件）或序号（Excel行）,
-                'content': 行内容（文本文件）或拼接后的字符串（Excel）,
-                'numbers': 提取的数字列表
-            },...
-        ]
-    实现细节说明：
-    - Excel文件处理：
-      1. 使用 pandas 读取所有原始数据（不解析表头）
-      2. 逐行拼接单元格内容为字符串
-      3. 提取所有数值字段（支持科学计数法外的任意数字格式）
+        List[Dict]: 匹配行列表，每项包含 line(行号), content(内容), numbers(数字列表)
 
-    - 文本文件处理：
-      1. 按指定编码逐行读取
-      2. 使用正则表达式提取数字（包含小数和负数）
-
-    性能优化：
-    - Excel大文件处理时建议设置 chunksize 分块读取
-    - 内置异常捕获保证至少返回空列表而非中断流程
-
-    典型应用场景：
-    >>> search_file_line("alipay.csv", "总收入:")
-    [
-        {
-            'line': 123,
-            'content': '总收入: ￥12,345.67',
-            'numbers': [12345.67]
-        }
-    ]
+    Raises:
+        ValueError: 不支持的文件格式或Excel读取失败
     """
     results = []
+    number_pattern = re.compile(r"[-+]?\d*\.\d+|\d+")
 
-    # 判断文件类型
     if filename.lower().endswith(('.xlsx', '.xls')):
-        # Excel处理逻辑
+        # Excel文件处理：逐行拼接单元格并提取数字
         try:
-            df = pd.read_excel(filename, header=None)  # 不自动识别表头
+            df = pd.read_excel(filename, header=None)
             for idx, row in df.iterrows():
-                line_content = ""
-                numbers = []
-                # 遍历每个单元格
-                for cell in row:
-                    cell_str = str(cell)
-                    line_content += cell_str + " "
-                    # 提取数字
-                    numbers.extend(list(map(float, re.findall(r"[-+]?\d*\.\d+|\d+", cell_str))))
-
+                line_content = " ".join(str(cell) for cell in row)
+                numbers = [float(n) for n in number_pattern.findall(line_content)]
                 if keyword in line_content:
                     results.append({
-                        'line': idx + 1,  # Excel行号从1开始
+                        'line': idx + 1,
                         'content': line_content.strip(),
-                        'numbers': numbers
+                        'numbers': numbers,
                     })
         except Exception as e:
             raise ValueError(f"Excel文件读取失败: {str(e)}")
 
     elif filename.lower().endswith('.csv'):
-        # 原有文本文件处理逻辑
+        # 文本文件处理：按编码逐行读取
         with open(filename, 'r', encoding=encoding) as f:
             for line_num, line in enumerate(f, 1):
                 if keyword in line:
-                    numbers = list(map(float, re.findall(r"[-+]?\d*\.\d+|\d+", line)))
+                    numbers = [float(n) for n in number_pattern.findall(line)]
                     results.append({
                         'line': line_num,
                         'content': line.strip(),
-                        'numbers': numbers
+                        'numbers': numbers,
                     })
     else:
         raise ValueError("不支持的文件格式，仅支持.csv/.xlsx/.xls")
@@ -311,46 +256,27 @@ def search_file_line(filename: str, keyword: str, encoding: str = 'GB18030') -> 
 
 
 def clean_amount(raw_value: Any) -> Decimal:
-    """
-    清洗并转换金额数据为高精度Decimal类型
+    """清洗并转换金额数据为高精度Decimal类型
 
-    专为金融场景设计，处理包含货币符号、千分位分隔符等非数字字符的金额字符串，
-    转换为适合精确计算的Decimal类型。
+    专为金融场景设计，处理包含货币符号、千分位分隔符等非数字字符的金额字符串。
 
     Args:
-        raw_value (Any): 原始金额数据，可以是字符串/数字/空值等任意类型，
-                         典型格式如："¥1,234.56", "5,000", "-$78.90"
+        raw_value (Any): 原始金额数据，可以是字符串/数字/空值等任意类型
 
     Returns:
-        Decimal: 清洗后的Decimal数值，规则：
-                - 有效数值: 转换为对应Decimal (如"123.45" → Decimal('123.45'))
-                - 空值/无效值: 返回Decimal(0)
-                - 纯小数点: 返回Decimal(0) (如"." → 0)
-
-    Raises:
-        隐式捕获所有异常并返回Decimal(0)，保证流程稳定性
+        Decimal: 清洗后的Decimal数值，空值/无效值返回 Decimal(0)
 
     Example:
         >>> clean_amount("￥1,234.56")
         Decimal('1234.56')
-        >>> clean_amount("5k")
-        Decimal('5')
         >>> clean_amount(None)
         Decimal('0')
-        >>> clean_amount("无效金额")
-        Decimal('0')
-
-    Note:
-        - 使用正则表达式 [^\d.-] 过滤非数字字符（保留数字、负号、小数点）
-        - 支持处理科学计数法以外的常见金额格式
-        - 适用于pandas数据清洗管道中的apply操作
     """
     try:
-        # 移除所有非数字、负号和小数点字符（保留原始数值特征）
+        # 移除所有非数字、负号和小数点字符
         cleaned = re.sub(r'[^\d\.-]', '', str(raw_value))
-        # 处理空字符串和纯小数点的情况
         return Decimal(cleaned) if cleaned and cleaned != "." else Decimal(0)
-    except:
+    except Exception:
         return Decimal(0)
 
 
@@ -359,19 +285,11 @@ def decimal_sum(series: pd.Series) -> Decimal:
 
     专为金融数据设计的精确求和方案，解决pandas默认浮点运算的精度问题。
 
-    Key Features:
-        - 处理Decimal类型数据
-        - 自动过滤空值
-        - 支持大数精确计算
-
     Args:
         series (pd.Series): 需要求和的数列，元素应为Decimal类型
 
     Returns:
         Decimal: 精确求和结果
-
-    Benchmark:
-        测试数据集(10万条)精度误差 < 0.00001
 
     Example:
         >>> s = pd.Series([Decimal('0.1')]*10)
@@ -379,6 +297,123 @@ def decimal_sum(series: pd.Series) -> Decimal:
         Decimal('1.0')
     """
     return sum(filter(None, series), Decimal(0))
+
+
+def format_decimal(value, places='0.00') -> Decimal:
+    """将数值格式化为指定精度的Decimal
+
+    Args:
+        value: 需要格式化的数值（支持Decimal/float/int/str）
+        places: 精度格式，默认'0.00'保留两位小数
+
+    Returns:
+        Decimal: 格式化后的Decimal数值
+    """
+    return Decimal(value).quantize(Decimal(places), rounding=ROUND_HALF_UP)
+
+
+def extract_transaction_date_info(df: pd.DataFrame, time_col: str,
+                                  expense_col: str, income_col: str) -> Dict:
+    """提取交易日期相关的公共信息（最早/最晚交易、极值日期等）
+
+    将各账单处理器中重复的日期提取逻辑统一到此函数。
+
+    Args:
+        df: 已排序的交易数据DataFrame
+        time_col: 时间列名
+        expense_col: 支出金额列名
+        income_col: 收入金额列名
+
+    Returns:
+        Dict: 包含以下键的字典：
+            - earliest_row / latest_row: 最早/最晚交易行
+            - earliest_date / latest_date: 最早/最晚交易时间
+            - earliest_period / latest_period: 最早/最晚交易时段
+            - max_expense_date / min_expense_date: 支出极值日期
+            - max_income_date / min_income_date: 收入极值日期
+            - max_expense_time / max_income_time: 支出/收入极值完整时间
+    """
+    earliest_row = df.iloc[0]
+    latest_row = df.iloc[-1]
+    earliest_date = earliest_row[time_col]
+    latest_date = latest_row[time_col]
+
+    # 格式化极值对应的日期和时间
+    max_expense_idx = df[expense_col].idxmin()  # 支出为负值，最小即最大支出
+    min_expense_idx = df[expense_col].idxmax()  # 支出为负值，最大即最小支出
+    max_income_idx = df[income_col].idxmax()
+    min_income_idx = df[income_col].idxmin()
+
+    return {
+        "earliest_row": earliest_row,
+        "latest_row": latest_row,
+        "earliest_date": earliest_date,
+        "latest_date": latest_date,
+        "earliest_period": get_time_period(earliest_date.hour),
+        "latest_period": get_time_period(latest_date.hour),
+        "max_expense_date": df.loc[max_expense_idx, time_col].strftime("%y年%m月%d日"),
+        "min_expense_date": df.loc[min_expense_idx, time_col].strftime("%y年%m月%d日"),
+        "max_income_date": df.loc[max_income_idx, time_col].strftime("%y年%m月%d日"),
+        "min_income_date": df.loc[min_income_idx, time_col].strftime("%y年%m月%d日"),
+        "max_expense_time": df.loc[max_expense_idx, time_col].strftime("%y年%m月%d日%H:%M:%S"),
+        "max_income_time": df.loc[max_income_idx, time_col].strftime("%y年%m月%d日%H:%M:%S"),
+    }
+
+
+def get_transaction_type_and_amount(row, expense_col: str, income_col: str):
+    """根据收支金额判断交易类型和实际金额
+
+    Args:
+        row: DataFrame的一行数据
+        expense_col: 支出金额列名
+        income_col: 收入金额列名
+
+    Returns:
+        tuple: (交易类型字符串, 金额数值)
+    """
+    if row[income_col] == 0 or row[income_col] == Decimal(0):
+        return "支出", row[expense_col]
+    return "收入", row[income_col]
+
+
+def build_monthly_summary(df: pd.DataFrame, time_col: str,
+                          expense_col: str, income_col: str) -> Dict:
+    """按月汇总收支数据并找出极值月份
+
+    Args:
+        df: 交易数据DataFrame
+        time_col: 时间列名
+        expense_col: 支出金额列名
+        income_col: 收入金额列名
+
+    Returns:
+        Dict: 包含以下键：
+            - max_expense_month: 支出最多月份的字符串 (如"2024-03")
+            - max_expense_month_amount: 该月支出总额
+            - max_income_month: 收入最多月份的字符串
+            - max_income_month_amount: 该月收入总额
+    """
+    df_copy = df.copy()
+    df_copy["交易月"] = df_copy[time_col].dt.to_period("M")
+
+    monthly = (
+        df_copy.groupby("交易月")
+        .agg(总支出=(expense_col, "sum"), 总收入=(income_col, "sum"))
+        .reset_index()
+    )
+
+    # 支出最多月份（支出为负值，idxmin即最大支出）
+    max_exp_month = monthly.loc[monthly["总支出"].idxmin()]
+    # 收入最多月份
+    max_inc_month = monthly.loc[monthly["总收入"].idxmax()]
+
+    return {
+        "max_expense_month": max_exp_month["交易月"].strftime("%Y-%m"),
+        "max_expense_month_amount": max_exp_month["总支出"],
+        "max_income_month": max_inc_month["交易月"].strftime("%Y-%m"),
+        "max_income_month_amount": max_inc_month["总收入"],
+    }
+
 
 # Section 尾注 开源许可证
 

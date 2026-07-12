@@ -5,30 +5,38 @@
 # ✔️to-do：添加词云
 # todo：添加汇率转换
 # todo：添加图表可视化
-# todo：支出记账软件的账单
+# todo：支持记账软件的账单
 # todo：支持银行app导出的账单
 
-#！待优化：分析账单时如果账单已经处理过会报错
 import os
 import sys
 import re
+import logging
 import threading
 import tkinter as tk
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from matplotlib.font_manager import FontProperties
+from matplotlib.font_manager import FontProperties, fontManager
 from datetime import datetime
 from tkinter import messagebox, filedialog, ttk
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 from cheng_xu import wx_csv, zfb_wy_csv, zfb_app_zhong_wen_csv, ci_yun
 
+# 配置日志
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# 账单类型与处理函数的映射表
 BILL_PROCESSORS = {
     "微信app导出": wx_csv,
     "支付宝网页导出": zfb_wy_csv,
     "支付宝APP中文导出": zfb_app_zhong_wen_csv,
 }
+
+# 支持的账单类型列表
+BILL_TYPES = list(BILL_PROCESSORS.keys())
 
 
 class BillAnalyzerUI:
@@ -42,313 +50,60 @@ class BillAnalyzerUI:
     """
 
     def __init__(self, root):
-        """
-        初始化主窗口和相关组件。
-        :param root: Tkinter 根窗口对象
+        """初始化主窗口和相关组件
+
+        Args:
+            root: Tkinter 根窗口对象
         """
         self.root = root
         self.root.title("账单分析工具 v1.0")
         self.root.geometry("800x600")
 
-        # 获取当前工作目录（即 .exe 文件所在目录）
+        # 获取当前工作目录（即 .exe 文件所在目录或脚本所在目录）
         self.current_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
 
-        # 字体相关初始化
-        self.font_dir = os.path.join(self.current_dir, "f_ont")  # 相对路径指向外部的 f_ont 文件夹
-        self.default_font = "LXGWNeoXiHeiPlus.ttf"  # 默认字体文件名（含扩展名）
-        self.default_font_name = os.path.splitext(self.default_font)[0]  # 去掉扩展名后的默认字体名称
-        self.size_var = tk.StringVar(value="15")  # 默认字号
-        self.file_path_var_main = tk.StringVar()  # 主窗口的文件路径变量
-        self.bill_type = tk.StringVar(value="微信app导出")  # 默认账单类型
-        self.current_text = ""  # 当前显示的文本内容
-        self.current_image = None  # 当前显示的图像
+        # --- 字体相关初始化 ---
+        self.font_dir = os.path.join(self.current_dir, "f_ont")
+        self.default_font = "LXGWNeoXiHeiPlus.ttf"
+        self.default_font_name = os.path.splitext(self.default_font)[0]
+        self.size_var = tk.StringVar(value="15")
+        self.file_path_var_main = tk.StringVar()
+        self.bill_type = tk.StringVar(value=BILL_TYPES[0])
+        self.current_text = ""
+        self.current_image = None
+        self.current_wordcloud_image = None
+        self.mask_image_path = tk.StringVar()
 
         # 验证默认字体是否存在
-        if not self.validate_default_font():
+        if not self._validate_default_font():
             return
 
-        if self.validate_default_font():
-            default_font_path = os.path.join(self.font_dir, self.default_font)
-            from matplotlib.font_manager import fontManager
-            fontManager.addfont(default_font_path)  # 预加载默认字体
-            font_prop = FontProperties(fname=default_font_path)
-            plt.rcParams['font.sans-serif'] = [font_prop.get_name()]
-            plt.rcParams['axes.unicode_minus'] = False
+        # 预加载默认字体到 matplotlib
+        self._setup_matplotlib_font(self.default_font)
 
-        # 加载可用字体列表
-        self.available_fonts = self.load_custom_fonts()
-        # 保存当前词云对象
-        self.current_wordcloud_image = None
-        # 新增掩码路径变量
-        self.mask_image_path = tk.StringVar()
-        # 初始化界面组件
+        # 加载可用字体列表并初始化界面
+        self.available_fonts = self._load_custom_fonts()
         self.create_ui_components()
-        # 菜单栏
         self.create_menu()
 
-    def show_loading(self, message="加载中..."):
-        self.loading_label = tk.Label(self.root, text=message)
-        self.loading_label.pack(pady=10)
-
-    def hide_loading(self):
-        if hasattr(self, 'loading_label'):
-            self.loading_label.destroy()
-
-    def update_canvas_size(self, image):
-        width, height = image.size
-        self.output_canvas.config(width=width, height=height)
-
-    def get_safe_filename(self, filename):
-        """生成安全的文件名（替换非法字符）
+    def _setup_matplotlib_font(self, font_filename: str) -> None:
+        """配置 matplotlib 使用指定字体
 
         Args:
-            filename (str): 原始文件名
+            font_filename: 字体文件名（含扩展名）
+        """
+        font_path = os.path.join(self.font_dir, font_filename)
+        fontManager.addfont(font_path)
+        font_prop = FontProperties(fname=font_path)
+        plt.rcParams['font.sans-serif'] = [font_prop.get_name()]
+        plt.rcParams['axes.unicode_minus'] = False
+
+    def _validate_default_font(self) -> bool:
+        """验证默认字体文件是否存在
 
         Returns:
-            str: 替换非法字符后的安全文件名
+            bool: 字体存在返回True，否则销毁窗口并返回False
         """
-        # 使用正则表达式替换不安全字符
-        safe_filename = re.sub(r'[\\/*?:"<>|]', '_', filename)
-        return safe_filename
-
-    def create_ui_components(self):
-        """创建主界面UI组件
-        包含：
-        - Notebook控件（标签页容器）
-        - 账单分析标签页
-        - 词云生成标签页
-        - 汇率转换标签页
-        """
-        # 创建 Notebook 控件
-        self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-
-        # 账单分析标签页
-        self.bill_analysis_frame = tk.Frame(self.notebook)
-        self.notebook.add(self.bill_analysis_frame, text="账单分析")
-        self.create_bill_analysis_ui(self.bill_analysis_frame)
-
-        # 词云生成标签页
-        self.word_cloud_frame = tk.Frame(self.notebook)
-        self.notebook.add(self.word_cloud_frame, text="词云生成")
-        self.create_word_cloud_ui(self.word_cloud_frame)
-
-    def create_bill_analysis_ui(self, parent):
-        """创建账单分析标签页UI
-
-        Args:
-            parent (tk.Widget): 父容器控件
-        """
-        # 文件路径显示标签
-        tk.Label(parent, textvariable=self.file_path_var_main).pack(pady=10)
-
-        # 主窗口的文件选择按钮
-        tk.Button(parent, text="选择文件", command=self.select_main_file).pack(pady=10)
-
-        # 账单类型选择下拉框
-        ttk.Combobox(
-            parent,
-            textvariable=self.bill_type,
-            values=["微信app导出", "支付宝网页导出", "支付宝APP中文导出"],
-        ).pack(pady=10)
-
-        # 运行分析按钮
-        tk.Button(parent, text="运行分析", command=self.process_file).pack(pady=10)
-
-        # 输出画布
-        self.output_canvas = tk.Canvas(parent, height=400, bg="white")
-        self.output_canvas.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
-
-    def create_word_cloud_ui(self, parent):
-        """创建词云生成标签页UI
-
-        Args:
-            parent (tk.Widget): 父容器控件
-        """
-        # 文件选择按钮
-        tk.Button(
-            parent,
-            text="选择文件",
-            command=self.select_file_for_word_cloud
-        ).pack(pady=10)
-
-        # 文件路径显示标签
-        self.file_path_var_wc = tk.StringVar()
-        tk.Label(
-            parent,
-            textvariable=self.file_path_var_wc
-        ).pack(pady=5)
-
-        # 列名选择组件
-        column_frame = tk.Frame(parent)
-        column_frame.pack(pady=5)
-        tk.Label(column_frame, text="选择列名:").pack(side=tk.LEFT)
-        self.column_combo = ttk.Combobox(
-            column_frame,
-            state="readonly"
-        )
-        self.column_combo.pack(side=tk.LEFT, padx=5)
-
-        # 颜色映射选择组件
-        colormap_frame = tk.Frame(parent)
-        colormap_frame.pack(pady=5)
-        tk.Label(colormap_frame, text="选择颜色映射:").pack(side=tk.LEFT)
-        self.colormap_combo = ttk.Combobox(
-            colormap_frame,
-            state="readonly",
-            values=self.get_colormaps()
-        )
-        self.colormap_combo.current(0)  # 默认选第一个颜色映射
-        self.colormap_combo.pack(side=tk.LEFT, padx=5)
-
-        # 掩码图像选择组件
-        mask_frame = tk.Frame(parent)
-        mask_frame.pack(pady=5)
-        tk.Button(
-            mask_frame,
-            text="选择掩码图",
-            command=self.select_mask_image
-        ).pack(side=tk.LEFT)
-        # 路径显示标签
-        self.mask_image_path = tk.StringVar()
-        tk.Label(
-            parent,
-            textvariable=self.mask_image_path
-        ).pack(pady=5)
-
-        # 生成词云按钮
-        tk.Button(
-            parent,
-            text="生成词云",
-            command=self.generate_word_cloud
-        ).pack(pady=20)
-
-        # 保存图片按钮
-        tk.Button(
-            parent,
-            text="保存图片",
-            command=self.save_word_cloud_image
-        ).pack(pady=10)
-
-    def select_mask_image(self):
-        """选择掩码图像文件"""
-        path = filedialog.askopenfilename(
-            filetypes=[("图片文件", "*.png *.jpg *.jpeg")]
-        )
-        if path:
-            # 显示完整路径
-            self.mask_image_path.set(path)
-
-    def save_word_cloud_image(self):
-        """保存词云图片到本地
-        文件命名规则：
-        [原文件名]_[列名]_[色表]_[时间戳].png
-        """
-        if not self.current_wordcloud_image:  # 增加空值检查
-            messagebox.showwarning("警告", "请先生成词云")
-            return
-        file_path = self.file_path_var_wc.get()
-        column_name = self.column_combo.get()
-        colormap = self.colormap_combo.get()
-
-        if not all([file_path, column_name, colormap]):
-            messagebox.showwarning("警告", "请确保已选择文件、列名和颜色映射")
-            return
-
-        try:
-            # 动态生成文件名
-            base_file_name = os.path.splitext(os.path.basename(file_path))[0]
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            safe_column_name = self.get_safe_filename(column_name)
-            safe_colormap = self.get_safe_filename(colormap)
-            file_name = f"{base_file_name}_{safe_column_name}_{safe_colormap}_{timestamp}.png"
-
-            # 弹出保存对话框
-            save_path = filedialog.asksaveasfilename(
-                defaultextension=".png",
-                initialfile=file_name,
-                filetypes=[("PNG 文件", "*.png"), ("所有文件", "*.*")]
-            )
-            if save_path:
-                if self.current_wordcloud_image:
-                    self.current_wordcloud_image.save(save_path)
-                    messagebox.showinfo("成功", f"词云图片已保存：{save_path}")
-            else:
-                messagebox.showinfo("取消", "保存操作已取消")
-
-        except Exception as e:
-            messagebox.showerror("错误", f"保存词云图片失败: {str(e)}")
-
-    def get_colormaps(self):
-        """获取所有可用的颜色映射"""
-        return sorted(plt.colormaps())
-
-    def select_main_file(self):
-        """主窗口的文件选择（用于分析账单）"""
-        path = filedialog.askopenfilename(filetypes=[("CSV 文件", "*.csv"), ("Excel 文件", "*.xlsx *.xls")])
-        if path:
-            self.file_path_var_main.set(f"当前文件: {path}")
-
-    def select_file_for_word_cloud(self):
-        """词云窗口的文件选择"""
-        path = filedialog.askopenfilename(filetypes=[("CSV 文件", "*.csv"), ("Excel 文件", "*.xlsx *.xls")])
-        if path:
-            self.file_path_var_wc.set(path)
-            try:
-                # 根据文件扩展名选择合适的读取方法
-                df = pd.read_csv(path) if path.endswith('.csv') else pd.read_excel(path)
-                columns = list(df.columns)
-                self.column_combo['values'] = columns
-                self.column_combo.current(0)  # 默认选第一列
-            except Exception as e:
-                messagebox.showerror("错误", f"文件读取失败: {str(e)}")
-
-    def generate_word_cloud(self):
-        """生成词云主逻辑
-        流程：
-        1. 验证输入参数
-        2. 加载字体文件
-        3. 调用词云生成函数
-        4. 显示生成结果
-        """
-        file_path = self.file_path_var_wc.get()
-        column_name = self.column_combo.get()
-        colormap = self.colormap_combo.get()
-
-        if not all([file_path, column_name, colormap]):
-            messagebox.showwarning("警告", "请确保已选择文件、列名和颜色映射")
-            return
-
-        try:
-            # 获取当前字体路径
-            font_name = self.font_var.get()
-            font_path = self.get_font_path(font_name)  # 新增获取字体路径
-            if not font_path:
-                raise ValueError(f"未找到字体文件: {font_name}")
-
-            # 修改ci_yun调用，添加font_path参数
-            self.current_wordcloud_image = ci_yun(
-                file_path,
-                column_name,
-                file_name=self.mask_image_path.get() or None,  # 传递掩码路径
-                colormap=colormap,
-                font_path=font_path
-            )
-
-            plt.imshow(self.current_wordcloud_image)  # 显示已保存的词云
-            # 使用 matplotlib 显示图片
-            plt.figure(figsize=(10, 8))
-            plt.imshow(self.current_wordcloud_image)
-            plt.axis("off")  # 隐藏坐标轴
-            plt.title("生成的词云图", fontsize=16)  # 添加标题
-            plt.show()
-
-            messagebox.showinfo("成功", "词云生成成功！")
-        except Exception as e:
-            messagebox.showerror("错误", f"词云生成失败: {str(e)}")
-
-    def validate_default_font(self):
-        """验证默认字体文件是否存在"""
         default_font_path = os.path.join(self.font_dir, self.default_font)
         if not os.path.exists(default_font_path):
             messagebox.showerror(
@@ -359,8 +114,12 @@ class BillAnalyzerUI:
             return False
         return True
 
-    def load_custom_fonts(self):
-        """加载自定义字体文件并返回字体名称列表"""
+    def _load_custom_fonts(self) -> list:
+        """扫描字体目录，加载所有可用的 TTF/OTF 字体名称
+
+        Returns:
+            list: 字体名称列表（不含扩展名），默认字体排在首位
+        """
         custom_fonts = []
         if not os.path.exists(self.font_dir):
             messagebox.showerror("错误", f"字体目录不存在: {self.font_dir}")
@@ -368,8 +127,7 @@ class BillAnalyzerUI:
 
         for f in os.listdir(self.font_dir):
             if f.lower().endswith(('.ttf', '.otf')):
-                font_name = os.path.splitext(f)[0]  # 去掉扩展名
-                custom_fonts.append(font_name)
+                custom_fonts.append(os.path.splitext(f)[0])
 
         # 确保默认字体在列表首位
         if self.default_font_name not in custom_fonts:
@@ -377,8 +135,116 @@ class BillAnalyzerUI:
 
         return custom_fonts
 
+    def _get_font_path(self, font_name: str) -> str:
+        """根据字体名称查找字体文件路径
+
+        Args:
+            font_name: 字体名称（不含扩展名）
+
+        Returns:
+            str: 字体文件完整路径，未找到返回None
+        """
+        for ext in ['.ttf', '.otf', '.TTF', '.OTF']:
+            test_path = os.path.join(self.font_dir, f"{font_name}{ext}")
+            if os.path.exists(test_path):
+                return test_path
+        return None
+
+    def _get_safe_filename(self, filename: str) -> str:
+        """生成安全的文件名（替换Windows非法字符）
+
+        Args:
+            filename: 原始文件名
+
+        Returns:
+            str: 替换非法字符后的安全文件名
+        """
+        return re.sub(r'[\\/*?:"<>|]', '_', filename)
+
+    # ======================== UI 构建 ========================
+
+    def create_ui_components(self):
+        """创建主界面UI组件（标签页容器）"""
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        # 账单分析标签页
+        bill_frame = tk.Frame(self.notebook)
+        self.notebook.add(bill_frame, text="账单分析")
+        self._create_bill_analysis_ui(bill_frame)
+
+        # 词云生成标签页
+        wc_frame = tk.Frame(self.notebook)
+        self.notebook.add(wc_frame, text="词云生成")
+        self._create_word_cloud_ui(wc_frame)
+
+    def _create_bill_analysis_ui(self, parent):
+        """创建账单分析标签页UI
+
+        Args:
+            parent: 父容器控件
+        """
+        # 文件路径显示
+        tk.Label(parent, textvariable=self.file_path_var_main).pack(pady=10)
+
+        # 文件选择按钮
+        tk.Button(parent, text="选择文件", command=self._select_main_file).pack(pady=10)
+
+        # 账单类型下拉框
+        ttk.Combobox(
+            parent,
+            textvariable=self.bill_type,
+            values=BILL_TYPES,
+        ).pack(pady=10)
+
+        # 运行分析按钮
+        tk.Button(parent, text="运行分析", command=self._process_file).pack(pady=10)
+
+        # 输出画布（用于显示分析结果图像）
+        self.output_canvas = tk.Canvas(parent, height=400, bg="white")
+        self.output_canvas.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+
+    def _create_word_cloud_ui(self, parent):
+        """创建词云生成标签页UI
+
+        Args:
+            parent: 父容器控件
+        """
+        # 文件选择
+        tk.Button(parent, text="选择文件", command=self._select_file_for_word_cloud).pack(pady=10)
+
+        self.file_path_var_wc = tk.StringVar()
+        tk.Label(parent, textvariable=self.file_path_var_wc).pack(pady=5)
+
+        # 列名选择
+        col_frame = tk.Frame(parent)
+        col_frame.pack(pady=5)
+        tk.Label(col_frame, text="选择列名:").pack(side=tk.LEFT)
+        self.column_combo = ttk.Combobox(col_frame, state="readonly")
+        self.column_combo.pack(side=tk.LEFT, padx=5)
+
+        # 颜色映射选择
+        cmap_frame = tk.Frame(parent)
+        cmap_frame.pack(pady=5)
+        tk.Label(cmap_frame, text="选择颜色映射:").pack(side=tk.LEFT)
+        self.colormap_combo = ttk.Combobox(cmap_frame, state="readonly", values=self._get_colormaps())
+        self.colormap_combo.current(0)
+        self.colormap_combo.pack(side=tk.LEFT, padx=5)
+
+        # 掩码图像选择
+        mask_frame = tk.Frame(parent)
+        mask_frame.pack(pady=5)
+        tk.Button(mask_frame, text="选择掩码图", command=self._select_mask_image).pack(side=tk.LEFT)
+        tk.Label(parent, textvariable=self.mask_image_path).pack(pady=5)
+
+        # 生成词云按钮
+        tk.Button(parent, text="生成词云", command=self._generate_word_cloud).pack(pady=20)
+
+        # 保存图片按钮
+        tk.Button(parent, text="保存图片", command=self._save_word_cloud_image).pack(pady=10)
+
     def create_menu(self):
-        """创建菜单栏"""
+        """创建菜单栏（文件菜单 + 字体菜单）"""
         menu_bar = tk.Menu(self.root)
 
         # 文件菜单
@@ -386,91 +252,133 @@ class BillAnalyzerUI:
         file_menu.add_command(label="退出", command=self.root.quit)
         menu_bar.add_cascade(label="文件", menu=file_menu)
 
-        # 字体菜单
+        # 字体菜单（含字号子菜单）
         self.font_var = tk.StringVar(value=self.default_font_name)
         font_menu = tk.Menu(menu_bar, tearoff=0)
         for font_name in self.available_fonts:
             font_menu.add_radiobutton(
                 label=font_name,
                 variable=self.font_var,
-                command=lambda n=font_name: self.apply_font(n),
+                command=lambda n=font_name: self._apply_font(n),
             )
-        menu_bar.add_cascade(label="字体", menu=font_menu)
 
         # 字号子菜单
         size_menu = tk.Menu(font_menu, tearoff=0)
         for size in [10, 11, 12, 13, 14, 15, 16]:
             size_menu.add_radiobutton(
-                label=str(size), variable=self.size_var, command=self.apply_font_size
+                label=str(size), variable=self.size_var, command=self._apply_font_size
             )
         font_menu.add_cascade(label="字号", menu=size_menu)
+        menu_bar.add_cascade(label="字体", menu=font_menu)
 
         self.root.config(menu=menu_bar)
 
-    def process_file(self):
-        """处理账单文件的主逻辑
-        使用多线程执行以下操作：
-        1. 解析选择的账单文件
-        2. 根据账单类型调用对应的处理器
-        3. 更新显示结果
+    # ======================== 事件处理 ========================
+
+    def _select_main_file(self):
+        """选择账单文件（支持CSV和Excel）"""
+        path = filedialog.askopenfilename(
+            filetypes=[("CSV 文件", "*.csv"), ("Excel 文件", "*.xlsx *.xls")]
+        )
+        if path:
+            self.file_path_var_main.set(f"当前文件: {path}")
+
+    def _select_file_for_word_cloud(self):
+        """选择词云数据源文件，并自动加载列名"""
+        path = filedialog.askopenfilename(
+            filetypes=[("CSV 文件", "*.csv"), ("Excel 文件", "*.xlsx *.xls")]
+        )
+        if not path:
+            return
+
+        self.file_path_var_wc.set(path)
+        try:
+            df = pd.read_csv(path) if path.endswith('.csv') else pd.read_excel(path)
+            columns = list(df.columns)
+            self.column_combo['values'] = columns
+            self.column_combo.current(0)
+        except Exception as e:
+            messagebox.showerror("错误", f"文件读取失败: {str(e)}")
+
+    def _select_mask_image(self):
+        """选择词云掩码图像文件"""
+        path = filedialog.askopenfilename(
+            filetypes=[("图片文件", "*.png *.jpg *.jpeg")]
+        )
+        if path:
+            self.mask_image_path.set(path)
+
+    def _process_file(self):
+        """处理账单文件（使用多线程避免UI阻塞）
+
+        流程：
+        1. 获取文件路径和账单类型
+        2. 在子线程中调用对应处理器
+        3. 将结果渲染到Canvas
         """
 
         def task():
             try:
+                # 从 "当前文件: xxx" 格式中提取路径
                 file_path = self.file_path_var_main.get().split(': ')[-1]
                 if not file_path:
                     raise ValueError("未选择文件")
-                result = BILL_PROCESSORS.get(self.bill_type.get(), lambda x: None)(file_path)
+
+                processor = BILL_PROCESSORS.get(self.bill_type.get())
+                if processor is None:
+                    raise ValueError(f"不支持的账单类型: {self.bill_type.get()}")
+
+                result = processor(file_path)
                 if result is None:
-                    raise ValueError("未知账单类型")
+                    raise ValueError("处理结果为空，请检查文件格式")
+
                 self.current_text = str(result)[:5000]
-                self.root.after(0, lambda: self.apply_font(self.font_var.get()))
+                # 回到主线程更新UI
+                self.root.after(0, lambda: self._apply_font(self.font_var.get()))
             except Exception as e:
                 self.root.after(0, lambda: messagebox.showerror("错误", f"处理失败: {str(e)}"))
 
-        threading.Thread(target=task).start()
+        threading.Thread(target=task, daemon=True).start()
 
-    def apply_font_size(self):
+    def _apply_font_size(self):
         """应用当前选择的字号"""
-        self.apply_font(self.font_var.get())
+        self._apply_font(self.font_var.get())
 
-    def apply_font(self, font_name):
+    def _apply_font(self, font_name):
         """应用指定字体到文本渲染
+
+        将当前分析结果文本使用指定字体渲染为图片，
+        然后显示在Canvas上。
 
         Args:
             font_name (str): 字体名称（不带扩展名）
-
-        Raises:
-            FileNotFoundError: 当字体文件不存在时抛出
         """
         try:
             text_content = self.current_text
             font_size = int(self.size_var.get())
+
+            # 创建白色背景图片
             image = Image.new("RGB", (800, 500), "white")
             draw = ImageDraw.Draw(image)
 
             # 获取字体文件路径
-            font_path = self.get_font_path(font_name)
+            font_path = self._get_font_path(font_name)
             if not font_path:
                 raise FileNotFoundError(f"未找到字体文件: {font_name}")
 
-            # 注册并强制刷新字体缓存
-            from matplotlib.font_manager import fontManager
-            fontManager.addfont(font_path)  # 强制注册字体文件
+            # 注册字体到 matplotlib（用于词云等模块）
+            fontManager.addfont(font_path)
             font_prop = FontProperties(fname=font_path)
             plt.rcParams['font.sans-serif'] = [font_prop.get_name()]
             plt.rcParams['axes.unicode_minus'] = False
-            plt.rcParams.update(plt.rcParams)  # 强制刷新配置
 
-            # 加载字体
+            # 加载字体并渲染文本
             image_font = ImageFont.truetype(font_path, font_size)
-
-            # 渲染文本
             x, y = 10, 10
             for line in text_content.split('\n'):
-                bbox = draw.textbbox((x, y), line, font=image_font)  # 使用 getbox 方法获取文本边界框
+                bbox = draw.textbbox((x, y), line, font=image_font)
                 draw.text((x, y), line, font=image_font, fill="black")
-                y += bbox[3] - bbox[1] + 5  # 根据 bbox 计算行高
+                y += bbox[3] - bbox[1] + 5
 
             # 更新Canvas显示
             self.current_image = ImageTk.PhotoImage(image)
@@ -478,22 +386,107 @@ class BillAnalyzerUI:
             self.output_canvas.create_image(0, 0, anchor=tk.NW, image=self.current_image)
 
         except Exception as e:
-            error_details = f"""字体加载失败详细诊断：
-            1. 字体目录：{self.font_dir}
-            2. 尝试加载的字体：{font_name}
-            3. 当前工作目录：{os.getcwd()}
-            4. 错误类型：{type(e).__name__}
-            5. 错误详情：{str(e)}"""
+            error_details = (
+                f"字体加载失败详细诊断：\n"
+                f"1. 字体目录：{self.font_dir}\n"
+                f"2. 尝试加载的字体：{font_name}\n"
+                f"3. 当前工作目录：{os.getcwd()}\n"
+                f"4. 错误类型：{type(e).__name__}\n"
+                f"5. 错误详情：{str(e)}"
+            )
             messagebox.showerror("字体错误", error_details)
 
-    def get_font_path(self, font_name):
-        """根据字体名称获取字体文件路径"""
-        possible_extensions = ['.ttf', '.otf', '.TTF', '.OTF']
-        for ext in possible_extensions:
-            test_path = os.path.join(self.font_dir, f"{font_name}{ext}")
-            if os.path.exists(test_path):
-                return test_path
-        return None
+    def _get_colormaps(self):
+        """获取所有可用的matplotlib颜色映射名称
+
+        Returns:
+            list: 排序后的颜色映射名称列表
+        """
+        return sorted(plt.colormaps())
+
+    def _generate_word_cloud(self):
+        """生成词云主逻辑
+
+        流程：
+        1. 验证输入参数（文件、列名、颜色映射）
+        2. 加载字体文件
+        3. 调用词云生成函数
+        4. 使用matplotlib显示结果
+        """
+        file_path = self.file_path_var_wc.get()
+        column_name = self.column_combo.get()
+        colormap = self.colormap_combo.get()
+
+        if not all([file_path, column_name, colormap]):
+            messagebox.showwarning("警告", "请确保已选择文件、列名和颜色映射")
+            return
+
+        try:
+            # 获取字体路径
+            font_name = self.font_var.get()
+            font_path = self._get_font_path(font_name)
+            if not font_path:
+                raise ValueError(f"未找到字体文件: {font_name}")
+
+            # 调用词云生成函数
+            self.current_wordcloud_image = ci_yun(
+                file_path,
+                column_name,
+                file_name=self.mask_image_path.get() or None,
+                colormap=colormap,
+                font_path=font_path,
+            )
+
+            # 使用 matplotlib 显示图片
+            plt.figure(figsize=(10, 8))
+            plt.imshow(self.current_wordcloud_image)
+            plt.axis("off")
+            plt.title("生成的词云图", fontsize=16)
+            plt.show()
+
+            messagebox.showinfo("成功", "词云生成成功！")
+        except Exception as e:
+            messagebox.showerror("错误", f"词云生成失败: {str(e)}")
+
+    def _save_word_cloud_image(self):
+        """保存词云图片到本地
+
+        文件命名规则：[原文件名]_[列名]_[色表]_[时间戳].png
+        """
+        if not self.current_wordcloud_image:
+            messagebox.showwarning("警告", "请先生成词云")
+            return
+
+        file_path = self.file_path_var_wc.get()
+        column_name = self.column_combo.get()
+        colormap = self.colormap_combo.get()
+
+        if not all([file_path, column_name, colormap]):
+            messagebox.showwarning("警告", "请确保已选择文件、列名和颜色映射")
+            return
+
+        try:
+            # 动态生成文件名
+            base_name = os.path.splitext(os.path.basename(file_path))[0]
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_col = self._get_safe_filename(column_name)
+            safe_cmap = self._get_safe_filename(colormap)
+            file_name = f"{base_name}_{safe_col}_{safe_cmap}_{timestamp}.png"
+
+            # 弹出保存对话框
+            save_path = filedialog.asksaveasfilename(
+                defaultextension=".png",
+                initialfile=file_name,
+                filetypes=[("PNG 文件", "*.png"), ("所有文件", "*.*")],
+            )
+            if save_path:
+                self.current_wordcloud_image.save(save_path)
+                messagebox.showinfo("成功", f"词云图片已保存：{save_path}")
+            else:
+                messagebox.showinfo("取消", "保存操作已取消")
+
+        except Exception as e:
+            messagebox.showerror("错误", f"保存词云图片失败: {str(e)}")
 
 
 if __name__ == "__main__":
