@@ -17,6 +17,7 @@ from .wx import wx_csv
 from .zfb_wy import zfb_wy_csv
 from .zfb_app_zhong_wen import zfb_app_zhong_wen_csv
 from .ci_yun import ci_yun
+from .ke_shi_hua import generate_calendar_html, generate_chart_html, CHART_TYPES
 
 # 定义允许导入的内容
 __all__ = [
@@ -24,6 +25,9 @@ __all__ = [
     "zfb_wy_csv",
     "zfb_app_zhong_wen_csv",
     "ci_yun",
+    "generate_calendar_html",
+    "generate_chart_html",
+    "CHART_TYPES",
 ]
 
 # Section 尾注 开源许可证

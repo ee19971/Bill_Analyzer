@@ -28,7 +28,28 @@ from decimal import Decimal, ROUND_HALF_UP
 
 logger = logging.getLogger(__name__)
 
-nan = "___"  # 开发时占位用的空值
+
+def find_csv_header_offset(file_path: str, encoding: str) -> int:
+    """自动检测 CSV 文件中表头行之前需要跳过的行数
+
+    通过搜索已知关键词（发生时间、交易时间、账务流水号）定位真正的列名行。
+
+    Args:
+        file_path: CSV 文件路径
+        encoding: 文件编码
+
+    Returns:
+        int: 需要跳过的行数
+    """
+    header_keywords = ['交易时间', '发生时间', '账务流水号']
+    for keyword in header_keywords:
+        try:
+            results = search_file_line(file_path, keyword, encoding)
+            if results:
+                return results[0]['line'] - 1
+        except Exception:
+            continue
+    return 0
 
 
 def get_time_period(hour: int) -> str:

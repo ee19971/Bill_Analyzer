@@ -3,8 +3,8 @@
 
 # ✔️to-do：添加图形化界面并打包
 # ✔️to-do：添加词云
+# ✔️to-do：添加图表可视化
 # todo：添加汇率转换
-# todo：添加图表可视化
 # todo：支持记账软件的账单
 # todo：支持银行app导出的账单
 
@@ -14,16 +14,19 @@ import re
 import logging
 import threading
 import tkinter as tk
+import webbrowser
 import pandas as pd
 import matplotlib.pyplot as plt
 
 from matplotlib.font_manager import FontProperties, fontManager
 from datetime import datetime
+from pathlib import Path
 from tkinter import messagebox, filedialog, ttk
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
-from cheng_xu import wx_csv, zfb_wy_csv, zfb_app_zhong_wen_csv, ci_yun
+from cheng_xu import wx_csv, zfb_wy_csv, zfb_app_zhong_wen_csv, ci_yun, generate_calendar_html
 from cheng_xu.ci_yun import _detect_encoding, _read_data_file
+from cheng_xu.ke_shi_hua import generate_chart_html, CHART_TYPES
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -69,6 +72,7 @@ class BillAnalyzerUI:
         self.default_font_name = os.path.splitext(self.default_font)[0]
         self.size_var = tk.StringVar(value="15")
         self.file_path_var_main = tk.StringVar()
+        self.file_path_var_vis = tk.StringVar()
         self.bill_type = tk.StringVar(value=BILL_TYPES[0])
         self.current_text = ""
         self.current_image = None
@@ -179,6 +183,11 @@ class BillAnalyzerUI:
         self.notebook.add(wc_frame, text="词云生成")
         self._create_word_cloud_ui(wc_frame)
 
+        # 可视化生成标签页
+        vis_frame = tk.Frame(self.notebook)
+        self.notebook.add(vis_frame, text="可视化")
+        self._create_visualization_ui(vis_frame)
+
     def _create_bill_analysis_ui(self, parent):
         """创建账单分析标签页UI
 
@@ -244,6 +253,88 @@ class BillAnalyzerUI:
         # 保存图片按钮
         tk.Button(parent, text="保存图片", command=self._save_word_cloud_image).pack(pady=10)
 
+    def _create_visualization_ui(self, parent):
+        """创建可视化生成标签页UI
+
+        Args:
+            parent: 父容器控件
+        """
+        tk.Label(parent, textvariable=self.file_path_var_vis).pack(pady=10)
+
+        tk.Button(parent, text="选择文件", command=self._select_file_for_visualization).pack(pady=10)
+
+        chart_frame = tk.Frame(parent)
+        chart_frame.pack(pady=10)
+        tk.Label(chart_frame, text="图表类型:").pack(side=tk.LEFT)
+        self.chart_type_combo = ttk.Combobox(
+            chart_frame, state="readonly",
+            values=list(CHART_TYPES.keys()),
+            width=20,
+        )
+        self.chart_type_combo.current(0)
+        self.chart_type_combo.pack(side=tk.LEFT, padx=5)
+
+        self.vis_btn = tk.Button(parent, text="生成图表", command=self._generate_visualization)
+        self.vis_btn.pack(pady=20)
+
+        self.vis_status_var = tk.StringVar()
+        self.vis_status_label = tk.Label(parent, textvariable=self.vis_status_var, fg="gray")
+        self.vis_status_label.pack(pady=5)
+
+    def _select_file_for_visualization(self):
+        """选择可视化数据源文件"""
+        path = filedialog.askopenfilename(
+            filetypes=[("CSV 文件", "*.csv"), ("Excel 文件", "*.xlsx *.xls")]
+        )
+        if path:
+            self.file_path_var_vis.set(f"当前文件: {path}")
+
+    def _generate_visualization(self):
+        """根据用户选择的图表类型生成HTML并打开"""
+        chart_label = self.chart_type_combo.get()
+        chart_type = CHART_TYPES.get(chart_label, "heatmap")
+
+        self.vis_btn.config(state=tk.DISABLED)
+        self.vis_status_var.set(f"正在生成「{chart_label}」，请稍候...")
+        self.vis_status_label.config(fg="blue")
+
+        def task():
+            try:
+                file_path = self.file_path_var_vis.get().split(': ')[-1]
+                if not file_path:
+                    raise ValueError("未选择文件")
+
+                output_dir = self.current_dir
+                html_path = generate_chart_html(file_path, output_dir, chart_type)
+
+                self.root.after(0, lambda: self._on_visualization_done(html_path, chart_label))
+            except Exception as e:
+                self.root.after(0, lambda: self._on_visualization_error(str(e)))
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def _on_visualization_done(self, html_path: str, chart_label: str):
+        """可视化生成完成后的回调（主线程执行）
+
+        Args:
+            html_path: 生成的HTML文件路径
+            chart_label: 图表类型中文名称
+        """
+        self.vis_btn.config(state=tk.NORMAL)
+        self.vis_status_var.set(f"✓ 「{chart_label}」已保存至：{html_path}")
+        self.vis_status_label.config(fg="green")
+        webbrowser.open(Path(html_path).as_uri())
+
+    def _on_visualization_error(self, error_msg: str):
+        """可视化生成失败的回调（主线程执行）
+
+        Args:
+            error_msg: 错误信息
+        """
+        self.vis_btn.config(state=tk.NORMAL)
+        self.vis_status_var.set(f"✗ 生成失败：{error_msg}")
+        self.vis_status_label.config(fg="red")
+
     def create_menu(self):
         """创建菜单栏（文件菜单 + 字体菜单）"""
         menu_bar = tk.Menu(self.root)
@@ -298,7 +389,9 @@ class BillAnalyzerUI:
                 encoding = _detect_encoding(path)
                 df = _read_data_file(path, encoding)
             else:
-                df = pd.read_excel(path)
+                from cheng_xu.gong_yong_han_shu import find_csv_header_offset
+                skip_rows = find_csv_header_offset(path, 'utf-8')
+                df = pd.read_excel(path, skiprows=skip_rows)
             columns = list(df.columns)
             self.column_combo['values'] = columns
             self.column_combo.current(0)

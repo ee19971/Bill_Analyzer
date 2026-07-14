@@ -19,6 +19,7 @@ from decimal import Decimal
 from .gong_yong_han_shu import (
     get_time_period,
     get_mode_info,
+    find_csv_header_offset,
     calculate_financial_extremes,
     format_decimal,
     extract_transaction_date_info,
@@ -37,11 +38,14 @@ def zfb_wy_csv(file_path: str) -> str:
 
     Note:
         支付宝网页版账单特点：
-        - 前4行为摘要信息，实际数据从第5行开始
+        - 文件头部有摘要行（以#开头），实际数据从表头行开始
+        - 文件尾部有汇总行（以#开头），需要跳过
         - 金额列已分为"支出金额（-元）"和"收入金额（+元）"两列
     """
-    # --- 数据读取（跳过前4行摘要） ---
-    zfb = pd.read_csv(file_path, encoding="gb18030", skiprows=4)
+    # --- 数据读取（自动检测表头位置，跳过 # 注释行） ---
+    skip_rows = find_csv_header_offset(file_path, 'GB18030')
+    zfb = pd.read_csv(file_path, encoding="gb18030", skiprows=skip_rows,
+                      comment='#')
 
     # --- 数据清洗 ---
     zfb["发生时间"] = pd.to_datetime(zfb["发生时间"], errors="coerce")

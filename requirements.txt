@@ -7,17 +7,18 @@ Pillow>=11.1.0  # 图像处理库
 # 可选打包依赖（如需生成exe）
 # pyinstaller>=6.12.0
 
-# 数据分析相关（根据cheng_xu模块需要）
+# 数据分析相关（根据cheng_xu模块所需要）
 pandas>=2.2.3     # 如果用到数据分析
 openpyxl>=3.1.5   # 如果处理xlsx文件
 xlrd>=2.0.1       # 如果处理旧版xls文件
 
-# 可视化扩展（现在没做）
-matplotlib>=3.10.1 ; python_version >= '3.13'  # 图表功能
+# 可视化
+matplotlib~=3.10.1
+plotly>=5.0.0
+scipy>=1.14.0
 
 wordcloud~=1.9.4
 chardet~=5.2.0
-matplotlib~=3.10.1
 numpy~=2.2.3
 imageio~=2.37.0
 fonttools~=4.57.0

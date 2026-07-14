@@ -26,7 +26,7 @@ from wordcloud import WordCloud
 from chardet import detect
 from PIL import Image
 
-from .gong_yong_han_shu import search_file_line
+from .gong_yong_han_shu import search_file_line, find_csv_header_offset
 
 logger = logging.getLogger(__name__)
 
@@ -86,31 +86,6 @@ def _detect_encoding(file_path: str) -> str:
 
     return detected
 
-
-def _find_header_offset(file_path: str, encoding: str) -> int:
-    """自动检测 CSV 文件中表头行的位置
-
-    账单 CSV 文件通常有若干行摘要/元数据，真正的列名行需要通过
-    搜索已知关键词来定位。
-
-    Args:
-        file_path: 文件路径
-        encoding: 文件编码
-
-    Returns:
-        int: 表头行之前需要跳过的行数
-    """
-    header_keywords = ['交易时间', '发生时间', '账务流水号']
-    for keyword in header_keywords:
-        try:
-            results = search_file_line(file_path, keyword, encoding)
-            if results:
-                return results[0]['line'] - 1
-        except Exception:
-            continue
-    return 0
-
-
 def _read_data_file(file_path: str, encoding: str) -> pd.DataFrame:
     """根据文件扩展名读取数据
 
@@ -129,7 +104,7 @@ def _read_data_file(file_path: str, encoding: str) -> pd.DataFrame:
     """
     try:
         if file_path.endswith('.csv'):
-            skip_rows = _find_header_offset(file_path, encoding)
+            skip_rows = find_csv_header_offset(file_path, encoding)
             try:
                 return pd.read_csv(file_path, encoding=encoding, skiprows=skip_rows)
             except (UnicodeDecodeError, UnicodeError, pd.errors.ParserError):
@@ -138,13 +113,14 @@ def _read_data_file(file_path: str, encoding: str) -> pd.DataFrame:
                         continue
                     try:
                         logger.info("编码 %s 读取失败，尝试回退到 %s", encoding, fallback_enc)
-                        skip_rows = _find_header_offset(file_path, fallback_enc)
+                        skip_rows = find_csv_header_offset(file_path, fallback_enc)
                         return pd.read_csv(file_path, encoding=fallback_enc, skiprows=skip_rows)
                     except Exception:
                         continue
                 raise ValueError(f"使用 {encoding} 及回退编码均无法读取文件")
         elif file_path.endswith(('.xlsx', '.xls')):
-            return pd.read_excel(file_path)
+            skip_rows = find_csv_header_offset(file_path, 'utf-8')
+            return pd.read_excel(file_path, skiprows=skip_rows)
         else:
             raise ValueError("不支持的文件格式")
     except ValueError:

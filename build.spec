@@ -7,8 +7,11 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('f_ont', 'f_ont')],
-    hiddenimports=['wordcloud', 'chardet'],
+    datas=[
+        ('f_ont', 'f_ont'),
+        ('cheng_xu/static', 'cheng_xu/static'),
+    ],
+    hiddenimports=['wordcloud', 'chardet', 'plotly', 'scipy', 'scipy.sparse'],
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
