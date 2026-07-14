@@ -156,6 +156,299 @@ def load_data(filepath: str) -> pd.DataFrame:
     return df
 
 
+def get_available_years(filepath: str) -> list:
+    """获取账单文件中包含的所有年份
+
+    Args:
+        filepath: 账单文件路径（CSV 或 Excel）
+
+    Returns:
+        list: 降序排列的年份列表，如 [2025, 2024]
+    """
+    df = load_data(filepath)
+    return sorted(df['Year'].unique().tolist(), reverse=True)
+
+
+def _generate_hover_text_with_year(pivot_df: pd.DataFrame, year) -> list:
+    """生成含年份信息的日历热力图悬停提示文本
+
+    Args:
+        pivot_df: 月份×日期的透视DataFrame
+        year: 年份
+
+    Returns:
+        list: 二维列表，每个元素为对应单元格的HTML提示文本
+    """
+    conditions = [pivot_df > 0, pivot_df < 0, pivot_df == 0]
+    trans_types = pd.DataFrame(
+        np.select(conditions, ["收入", "支出", "无交易"], default="无交易").astype(str),
+        index=pivot_df.index,
+        columns=pivot_df.columns,
+    )
+
+    return [
+        [
+            f"{year}年<br>月份：{month}<br>日期：{day}号<br>"
+            f"类型：{trans_types.loc[month, day]}<br>"
+            f"金额：{pivot_df.loc[month, day]:,.2f}元"
+            for day in pivot_df.columns
+        ]
+        for month in pivot_df.index
+    ]
+
+
+def _create_multi_year_calendar(dataframe: pd.DataFrame) -> go.Figure:
+    """生成跨年日历热力图（每年一张，纵向堆叠）
+
+    Args:
+        dataframe: 包含多年数据的 DataFrame
+
+    Returns:
+        go.Figure: 堆叠热力图对象
+    """
+    years = sorted(dataframe['Year'].unique())
+    account_name = _detect_account_title(dataframe)
+    year_range = f"{years[0]}-{years[-1]}"
+
+    fig = go.Figure()
+    n_years = len(years)
+
+    for i, year in enumerate(years):
+        year_df = dataframe[dataframe['Year'] == year]
+        pivot_df = create_sparse_pivot(year_df)
+        z_dense = pivot_df.sparse.to_dense().values
+        hover_text = _generate_hover_text_with_year(pivot_df, year)
+
+        fig.add_trace(go.Heatmap(
+            z=z_dense,
+            x=[str(d) for d in pivot_df.columns],
+            y=pivot_df.index,
+            colorscale="Viridis",
+            hoverinfo="text",
+            text=hover_text,
+            zsmooth=False,
+            zmid=0,
+            name=str(year),
+            yaxis=f'y{i+1}' if i > 0 else 'y',
+        ))
+
+    cell_h = 55
+    total_h = max(400, cell_h * 12 * n_years + 60 * n_years + 80)
+
+    y_axes = {}
+    for i, year in enumerate(years):
+        bottom = (n_years - 1 - i) / n_years
+        top = (n_years - i) / n_years
+        pad = 0.02
+        key = 'yaxis' if i == 0 else f'yaxis{i+1}'
+        y_axes[key] = dict(
+            tickmode="array",
+            tickvals=MONTH_ORDER,
+            range=[-0.5, 11.5],
+            domain=[bottom + pad, top - pad],
+            anchor='x',
+        )
+
+    fig.update_layout(
+        title=f"{year_range}年{account_name}账户日历对比图",
+        xaxis=dict(
+            tickvals=list(range(0, 31, 3)),
+            ticktext=list(map(str, range(1, 32, 3))),
+            anchor='y',
+        ),
+        height=total_h,
+        width=1200,
+        **y_axes,
+    )
+
+    return fig
+
+
+def _create_multi_year_daily_trend(dataframe: pd.DataFrame) -> go.Figure:
+    """生成跨年每日收支趋势图（按年份分色叠加）
+
+    将不同年份的日期归一化到同一年，以便在 X 轴上直接对比。
+
+    Args:
+        dataframe: 包含多年数据的 DataFrame
+
+    Returns:
+        go.Figure: 折线图对象
+    """
+    years = sorted(dataframe['Year'].unique())
+    account_name = _detect_account_title(dataframe)
+    year_range = f"{years[0]}-{years[-1]}"
+
+    ref_year = years[0]
+    fig = go.Figure()
+
+    for year in years:
+        year_df = dataframe[dataframe['Year'] == year].copy()
+        daily = year_df.groupby(year_df['发生时间'].dt.date).agg(
+            收入=('收入金额（+元）', 'sum'),
+            支出=('支出金额（-元）', 'sum'),
+        ).reset_index()
+
+        daily['对齐日期'] = daily['发生时间'].apply(
+            lambda d: d.replace(year=ref_year)
+        )
+
+        fig.add_trace(go.Scatter(
+            x=daily['对齐日期'], y=daily['收入'],
+            name=f'{year} 收入', mode='lines',
+            line=dict(width=1.5), opacity=0.75,
+        ))
+        fig.add_trace(go.Scatter(
+            x=daily['对齐日期'], y=daily['支出'],
+            name=f'{year} 支出', mode='lines',
+            line=dict(width=1.5, dash='dash'), opacity=0.75,
+        ))
+
+    fig.update_layout(
+        title=f"{year_range}年{account_name}每日收支趋势对比",
+        xaxis_title="日期",
+        yaxis_title="金额（元）",
+        height=600, width=1200,
+        hovermode='x unified',
+        legend=dict(orientation='h', yanchor='bottom', y=1.02),
+    )
+    return fig
+
+
+def _create_multi_year_monthly_bar(dataframe: pd.DataFrame) -> go.Figure:
+    """生成跨年月度收支对比柱状图（按年份分组）
+
+    Args:
+        dataframe: 包含多年数据的 DataFrame
+
+    Returns:
+        go.Figure: 柱状图对象
+    """
+    years = sorted(dataframe['Year'].unique())
+    account_name = _detect_account_title(dataframe)
+    year_range = f"{years[0]}-{years[-1]}"
+
+    monthly = dataframe.groupby(
+        [dataframe['Year'], dataframe['Month']], observed=False
+    ).agg(
+        收入=('收入金额（+元）', 'sum'),
+        支出=('支出金额（-元）', 'sum'),
+    ).reset_index()
+
+    fig = go.Figure()
+    for year in years:
+        ym = monthly[monthly['Year'] == year].set_index('Month')
+        ym = ym.reindex(MONTH_ORDER, fill_value=0.0)
+        fig.add_trace(go.Bar(
+            x=MONTH_ORDER, y=ym['收入'],
+            name=f'{year} 收入', marker_color='#2ecc71', opacity=0.6 + 0.4 * (year - years[0]) / max(len(years) - 1, 1),
+        ))
+        fig.add_trace(go.Bar(
+            x=MONTH_ORDER, y=ym['支出'],
+            name=f'{year} 支出', marker_color='#e74c3c', opacity=0.6 + 0.4 * (year - years[0]) / max(len(years) - 1, 1),
+        ))
+
+    fig.update_layout(
+        title=f"{year_range}年{account_name}月度收支对比",
+        xaxis_title="月份",
+        yaxis_title="金额（元）",
+        barmode='group',
+        height=600, width=1200,
+        legend=dict(orientation='h', yanchor='bottom', y=1.02),
+    )
+    return fig
+
+
+def _create_multi_year_monthly_net(dataframe: pd.DataFrame) -> go.Figure:
+    """生成跨年月度净收支趋势图（按年份分色多线对比）
+
+    Args:
+        dataframe: 包含多年数据的 DataFrame
+
+    Returns:
+        go.Figure: 折线图对象
+    """
+    years = sorted(dataframe['Year'].unique())
+    account_name = _detect_account_title(dataframe)
+    year_range = f"{years[0]}-{years[-1]}"
+
+    monthly = dataframe.groupby(
+        [dataframe['Year'], dataframe['Month']], observed=False
+    ).agg(净额=('金额', 'sum')).reset_index()
+
+    fig = go.Figure()
+    for year in years:
+        ym = monthly[monthly['Year'] == year].set_index('Month')
+        ym = ym.reindex(MONTH_ORDER, fill_value=0.0)
+        fig.add_trace(go.Scatter(
+            x=MONTH_ORDER, y=ym['净额'],
+            mode='lines+markers', name=str(year),
+            text=[f"{v:,.2f}" for v in ym['净额']],
+            textposition='top center',
+        ))
+
+    fig.add_hline(y=0, line_dash="dash", line_color="gray")
+    fig.update_layout(
+        title=f"{year_range}年{account_name}月度净收支对比",
+        xaxis_title="月份",
+        yaxis_title="净金额（元）",
+        height=600, width=1200,
+    )
+    return fig
+
+
+def _create_multi_year_category_pie(dataframe: pd.DataFrame) -> go.Figure:
+    """生成跨年支出分类饼图（汇总所有年份）
+
+    Args:
+        dataframe: 包含多年数据的 DataFrame
+
+    Returns:
+        go.Figure: 饼图对象
+    """
+    years = sorted(dataframe['Year'].unique())
+    account_name = _detect_account_title(dataframe)
+    year_range = f"{years[0]}-{years[-1]}"
+
+    expenses = dataframe[dataframe['支出金额（-元）'] < 0].copy()
+    if expenses.empty:
+        fig = go.Figure()
+        fig.update_layout(title=f"{year_range}年{account_name}支出分类（无支出数据）")
+        return fig
+
+    category_col = '备注' if '备注' in expenses.columns else '业务类型'
+    if category_col not in expenses.columns:
+        category_col = dataframe.columns[3]
+
+    expenses['金额绝对值'] = expenses['支出金额（-元）'].abs()
+
+    cat_grouped = expenses.groupby(category_col, observed=False)['金额绝对값'].sum()
+    cat_grouped = cat_grouped[cat_grouped > 0].sort_values(ascending=False)
+
+    if len(cat_grouped) > 10:
+        top = cat_grouped.iloc[:10]
+        other_sum = cat_grouped.iloc[10:].sum()
+        cat_grouped = pd.concat([top, pd.Series({'其他': other_sum})])
+
+    cat_grouped.index = [str(idx) if pd.notna(idx) and str(idx).strip() else '未分类'
+                         for idx in cat_grouped.index]
+
+    fig = go.Figure(go.Pie(
+        labels=cat_grouped.index,
+        values=cat_grouped.values,
+        hole=0.3,
+        textinfo='label+percent',
+        hovertemplate='%{label}<br>金额: %{value:,.2f}元<br>占比: %{percent}<extra></extra>',
+    ))
+
+    fig.update_layout(
+        title=f"{year_range}年{account_name}支出分类汇总",
+        height=600, width=900,
+        legend=dict(orientation='h', yanchor='bottom', y=-0.2),
+    )
+    return fig
+
+
 def create_sparse_pivot(dataframe: pd.DataFrame) -> pd.DataFrame:
     """生成稀疏矩阵透视表以优化内存
 
@@ -474,33 +767,59 @@ def create_category_pie(dataframe: pd.DataFrame) -> go.Figure:
 
 
 def generate_chart_html(csv_path: str, output_dir: str,
-                        chart_type: str = "heatmap") -> str:
+                        chart_type: str = "heatmap",
+                        year=None) -> str:
     """从账单文件生成指定类型的图表HTML
 
     支持 CSV 和 Excel 格式，兼容支付宝网页/APP及微信账单。
+    支持按年份筛选或跨年对比。
 
     Args:
         csv_path: 账单文件路径（CSV 或 Excel）
         output_dir: HTML输出目录
         chart_type: 图表类型标识（heatmap/daily_trend/monthly_bar/monthly_net/category_pie）
+        year: 年份筛选参数：
+              - int/str数字: 仅展示该年份数据
+              - 'all': 跨年对比模式
+              - None: 默认展示最新年份
 
     Returns:
         str: 生成的HTML文件完整路径
     """
-    chart_creators = {
-        "heatmap": (create_calendar_plot, "日历热力图"),
-        "daily_trend": (create_daily_trend, "每日收支趋势图"),
-        "monthly_bar": (create_monthly_bar, "月度收支对比图"),
-        "monthly_net": (create_monthly_net, "月度净收支趋势图"),
-        "category_pie": (create_category_pie, "支出分类饼图"),
+    single_creators = {
+        "heatmap": create_calendar_plot,
+        "daily_trend": create_daily_trend,
+        "monthly_bar": create_monthly_bar,
+        "monthly_net": create_monthly_net,
+        "category_pie": create_category_pie,
+    }
+    multi_creators = {
+        "heatmap": _create_multi_year_calendar,
+        "daily_trend": _create_multi_year_daily_trend,
+        "monthly_bar": _create_multi_year_monthly_bar,
+        "monthly_net": _create_multi_year_monthly_net,
+        "category_pie": _create_multi_year_category_pie,
     }
 
-    creator_func, chart_label = chart_creators.get(
-        chart_type, (create_calendar_plot, "日历热力图")
-    )
+    chart_label = {v: k for k, v in CHART_TYPES.items()}.get(chart_type, "日历热力图")
 
     df = load_data(csv_path)
-    fig = creator_func(df)
+    available_years = sorted(df['Year'].unique())
+
+    if year is None:
+        year = max(available_years)
+
+    if str(year).lower() == 'all' and len(available_years) > 1:
+        creator_func = multi_creators.get(chart_type, _create_multi_year_calendar)
+        df_filtered = df
+    else:
+        if str(year).lower() == 'all':
+            year = max(available_years)
+        year = int(year)
+        df_filtered = df[df['Year'] == year].copy()
+        creator_func = single_creators.get(chart_type, create_calendar_plot)
+
+    fig = creator_func(df_filtered)
 
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, f'消费分析-{chart_label}.html')

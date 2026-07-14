@@ -26,7 +26,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 from cheng_xu import wx_csv, zfb_wy_csv, zfb_app_zhong_wen_csv, ci_yun, generate_calendar_html
 from cheng_xu.ci_yun import _detect_encoding, _read_data_file
-from cheng_xu.ke_shi_hua import generate_chart_html, CHART_TYPES
+from cheng_xu.ke_shi_hua import generate_chart_html, CHART_TYPES, get_available_years
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -274,6 +274,12 @@ class BillAnalyzerUI:
         self.chart_type_combo.current(0)
         self.chart_type_combo.pack(side=tk.LEFT, padx=5)
 
+        year_frame = tk.Frame(parent)
+        year_frame.pack(pady=5)
+        tk.Label(year_frame, text="年份:").pack(side=tk.LEFT)
+        self.year_combo = ttk.Combobox(year_frame, state="readonly", width=15)
+        self.year_combo.pack(side=tk.LEFT, padx=5)
+
         self.vis_btn = tk.Button(parent, text="生成图表", command=self._generate_visualization)
         self.vis_btn.pack(pady=20)
 
@@ -282,15 +288,25 @@ class BillAnalyzerUI:
         self.vis_status_label.pack(pady=5)
 
     def _select_file_for_visualization(self):
-        """选择可视化数据源文件"""
+        """选择可视化数据源文件，并自动加载年份列表"""
         path = filedialog.askopenfilename(
             filetypes=[("CSV 文件", "*.csv"), ("Excel 文件", "*.xlsx *.xls")]
         )
         if path:
             self.file_path_var_vis.set(f"当前文件: {path}")
+            try:
+                years = get_available_years(path)
+                year_options = ["全部年份（跨年对比）"] + [str(y) for y in years]
+                self.year_combo['values'] = year_options
+                if len(years) > 1:
+                    self.year_combo.current(0)
+                else:
+                    self.year_combo.current(1 if years else 0)
+            except Exception as e:
+                messagebox.showerror("错误", f"读取年份失败: {str(e)}")
 
     def _generate_visualization(self):
-        """根据用户选择的图表类型生成HTML并打开"""
+        """根据用户选择的图表类型和年份生成HTML并打开"""
         chart_label = self.chart_type_combo.get()
         chart_type = CHART_TYPES.get(chart_label, "heatmap")
 
@@ -304,8 +320,15 @@ class BillAnalyzerUI:
                 if not file_path:
                     raise ValueError("未选择文件")
 
+                year_selection = self.year_combo.get()
+                if not year_selection or year_selection.startswith("全部"):
+                    year_param = 'all'
+                else:
+                    year_param = int(year_selection)
+
                 output_dir = self.current_dir
-                html_path = generate_chart_html(file_path, output_dir, chart_type)
+                html_path = generate_chart_html(file_path, output_dir, chart_type,
+                                                year=year_param)
 
                 self.root.after(0, lambda: self._on_visualization_done(html_path, chart_label))
             except Exception as e:
