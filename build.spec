@@ -7,8 +7,8 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('f_ont/LXGWNeoXiHeiPlus.ttf', 'f_ont')],  # 只复制默认字体文件
-    hiddenimports=[],
+    datas=[('f_ont', 'f_ont')],
+    hiddenimports=['wordcloud', 'chardet'],
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
@@ -30,7 +30,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
-    icon=r"C:\test\Bill_Analyzer\fu_jian\favicon.ico",
+    icon="fu_jian/favicon.ico",
 )
 
 coll = COLLECT(

@@ -23,6 +23,7 @@ from tkinter import messagebox, filedialog, ttk
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 from cheng_xu import wx_csv, zfb_wy_csv, zfb_app_zhong_wen_csv, ci_yun
+from cheng_xu.ci_yun import _detect_encoding, _read_data_file
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -293,7 +294,11 @@ class BillAnalyzerUI:
 
         self.file_path_var_wc.set(path)
         try:
-            df = pd.read_csv(path) if path.endswith('.csv') else pd.read_excel(path)
+            if path.endswith('.csv'):
+                encoding = _detect_encoding(path)
+                df = _read_data_file(path, encoding)
+            else:
+                df = pd.read_excel(path)
             columns = list(df.columns)
             self.column_combo['values'] = columns
             self.column_combo.current(0)

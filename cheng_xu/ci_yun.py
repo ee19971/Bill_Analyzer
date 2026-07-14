@@ -26,6 +26,8 @@ from wordcloud import WordCloud
 from chardet import detect
 from PIL import Image
 
+from .gong_yong_han_shu import search_file_line
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,7 +60,8 @@ def validate_file_path(file_path: str, valid_extensions: tuple) -> None:
 def _detect_encoding(file_path: str) -> str:
     """自动检测文件编码
 
-    优先使用 chardet 检测，若检测为中文常见编码（GB2312/GBK）则统一使用 GB18030。
+    优先使用 chardet 检测，若检测为中文常见编码（GB2312/GBK）或不可靠的
+    utf-8/ascii 结果，则统一使用 GB18030（账单文件绝大多数为 GB18030 编码）。
 
     Args:
         file_path: 文件路径
@@ -67,16 +70,52 @@ def _detect_encoding(file_path: str) -> str:
         str: 检测到的文件编码
     """
     chinese_encodings = {'GB2312', 'GB18030', 'GBK'}
+    unreliable_encodings = {'utf-8', 'UTF-8', 'ascii', 'ASCII'}
+
     with open(file_path, 'rb') as f:
-        detected = detect(f.read(10000))['encoding']
+        raw_data = f.read(10000)
+        result = detect(raw_data)
+        detected = result.get('encoding')
+        confidence = result.get('confidence', 0)
 
     if not detected or detected in chinese_encodings:
         return 'GB18030'
+
+    if detected in unreliable_encodings and confidence < 0.9:
+        return 'GB18030'
+
     return detected
+
+
+def _find_header_offset(file_path: str, encoding: str) -> int:
+    """自动检测 CSV 文件中表头行的位置
+
+    账单 CSV 文件通常有若干行摘要/元数据，真正的列名行需要通过
+    搜索已知关键词来定位。
+
+    Args:
+        file_path: 文件路径
+        encoding: 文件编码
+
+    Returns:
+        int: 表头行之前需要跳过的行数
+    """
+    header_keywords = ['交易时间', '发生时间', '账务流水号']
+    for keyword in header_keywords:
+        try:
+            results = search_file_line(file_path, keyword, encoding)
+            if results:
+                return results[0]['line'] - 1
+        except Exception:
+            continue
+    return 0
 
 
 def _read_data_file(file_path: str, encoding: str) -> pd.DataFrame:
     """根据文件扩展名读取数据
+
+    自动检测并跳过账单文件头部的摘要/元数据行。
+    若指定编码读取失败，自动回退到 GB18030 和 UTF-8 重试。
 
     Args:
         file_path: 文件路径
@@ -90,12 +129,27 @@ def _read_data_file(file_path: str, encoding: str) -> pd.DataFrame:
     """
     try:
         if file_path.endswith('.csv'):
-            return pd.read_csv(file_path, encoding=encoding)
+            skip_rows = _find_header_offset(file_path, encoding)
+            try:
+                return pd.read_csv(file_path, encoding=encoding, skiprows=skip_rows)
+            except (UnicodeDecodeError, UnicodeError, pd.errors.ParserError):
+                for fallback_enc in ['GB18030', 'utf-8']:
+                    if fallback_enc == encoding:
+                        continue
+                    try:
+                        logger.info("编码 %s 读取失败，尝试回退到 %s", encoding, fallback_enc)
+                        skip_rows = _find_header_offset(file_path, fallback_enc)
+                        return pd.read_csv(file_path, encoding=fallback_enc, skiprows=skip_rows)
+                    except Exception:
+                        continue
+                raise ValueError(f"使用 {encoding} 及回退编码均无法读取文件")
         elif file_path.endswith(('.xlsx', '.xls')):
             return pd.read_excel(file_path)
         else:
             raise ValueError("不支持的文件格式")
-    except (UnicodeDecodeError, KeyError) as e:
+    except ValueError:
+        raise
+    except (UnicodeDecodeError, pd.errors.ParserError, KeyError) as e:
         raise ValueError(f"读取文件失败: {str(e)}")
 
 
@@ -182,8 +236,10 @@ def ci_yun(file_path: str, list_name: str = None, file_name: str = None,
         raise KeyError(f"列名 '{list_name}' 不存在于文件中，请检查列名是否正确。")
 
     # 数据预处理：合并非空文本并替换特殊字符
-    text_data = " ".join(df[list_name].astype(str).dropna())
-    text_data = text_data.replace('*', '_').replace('.', '_')
+    text_series = df[list_name].dropna().astype(str)
+    text_series = text_series[text_series.str.strip() != ""]
+    text_data = " ".join(text_series)
+    # text_data = text_data.replace('*', '_').replace('.', '_')
 
     # 加载掩码图像（可选）
     mask_array = None
