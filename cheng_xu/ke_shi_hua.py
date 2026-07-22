@@ -422,7 +422,7 @@ def _create_multi_year_category_pie(dataframe: pd.DataFrame) -> go.Figure:
 
     expenses['金额绝对值'] = expenses['支出金额（-元）'].abs()
 
-    cat_grouped = expenses.groupby(category_col, observed=False)['金额绝对값'].sum()
+    cat_grouped = expenses.groupby(category_col, observed=False)['金额绝对值'].sum()
     cat_grouped = cat_grouped[cat_grouped > 0].sort_values(ascending=False)
 
     if len(cat_grouped) > 10:
@@ -739,7 +739,7 @@ def create_category_pie(dataframe: pd.DataFrame) -> go.Figure:
 
     expenses['金额绝对值'] = expenses['支出金额（-元）'].abs()
 
-    cat_grouped = expenses.groupby(category_col, observed=False)['金额绝对값'].sum()
+    cat_grouped = expenses.groupby(category_col, observed=False)['金额绝对值'].sum()
     cat_grouped = cat_grouped[cat_grouped > 0].sort_values(ascending=False)
 
     if len(cat_grouped) > 10:

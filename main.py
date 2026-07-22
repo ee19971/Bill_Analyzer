@@ -24,9 +24,11 @@ from pathlib import Path
 from tkinter import messagebox, filedialog, ttk
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
-from cheng_xu import wx_csv, zfb_wy_csv, zfb_app_zhong_wen_csv, ci_yun, generate_calendar_html
+from cheng_xu import wx_csv, zfb_wy_csv, zfb_app_zhong_wen_csv, ci_yun
 from cheng_xu.ci_yun import _detect_encoding, _read_data_file
 from cheng_xu.ke_shi_hua import generate_chart_html, CHART_TYPES, get_available_years
+from cheng_xu.ke_shi_hua_echarts import generate_echarts_html, ECHARTS_CHART_TYPES
+
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -60,7 +62,7 @@ class BillAnalyzerUI:
             root: Tkinter 根窗口对象
         """
         self.root = root
-        self.root.title("账单分析工具 v1.0")
+        self.root.title("账单分析工具")
         self.root.geometry("800x600")
 
         # 获取当前工作目录（即 .exe 文件所在目录或脚本所在目录）
@@ -90,6 +92,14 @@ class BillAnalyzerUI:
         self.available_fonts = self._load_custom_fonts()
         self.create_ui_components()
         self.create_menu()
+
+        # 分析报告导出
+        self.current_text = ""
+        self.current_image = None
+        self.current_wordcloud_image = None
+        self.mask_image_path = tk.StringVar()
+        self._source_file_path = ""
+        self._source_bill_type = ""
 
     def _setup_matplotlib_font(self, font_filename: str) -> None:
         """配置 matplotlib 使用指定字体
@@ -183,10 +193,16 @@ class BillAnalyzerUI:
         self.notebook.add(wc_frame, text="词云生成")
         self._create_word_cloud_ui(wc_frame)
 
-        # 可视化生成标签页
+        # 可视化plotly生成标签页
         vis_frame = tk.Frame(self.notebook)
-        self.notebook.add(vis_frame, text="可视化")
+        self.notebook.add(vis_frame, text="可视化-plotly")
         self._create_visualization_ui(vis_frame)
+
+        # 可视化echarts生成标签页
+        echarts_frame = tk.Frame(self.notebook)
+        self.notebook.add(echarts_frame, text="可视化-echarts")
+        self._create_echarts_ui(echarts_frame)
+
 
     def _create_bill_analysis_ui(self, parent):
         """创建账单分析标签页UI
@@ -208,7 +224,12 @@ class BillAnalyzerUI:
         ).pack(pady=10)
 
         # 运行分析按钮
-        tk.Button(parent, text="运行分析", command=self._process_file).pack(pady=10)
+        tk.Button(parent, text="运行分析", command=self._process_file).pack(pady=20)
+
+        # 状态栏
+        self.bill_status_var = tk.StringVar()
+        self.bill_status_label = tk.Label(parent, textvariable=self.bill_status_var, fg="gray")
+        self.bill_status_label.pack(pady=5)
 
         # 输出画布（用于显示分析结果图像）
         self.output_canvas = tk.Canvas(parent, height=400, bg="white")
@@ -220,22 +241,23 @@ class BillAnalyzerUI:
         Args:
             parent: 父容器控件
         """
-        # 文件选择
-        tk.Button(parent, text="选择文件", command=self._select_file_for_word_cloud).pack(pady=10)
-
+        # 文件路径显示
         self.file_path_var_wc = tk.StringVar()
-        tk.Label(parent, textvariable=self.file_path_var_wc).pack(pady=5)
+        tk.Label(parent, textvariable=self.file_path_var_wc).pack(pady=10)
+
+        # 文件选择按钮
+        tk.Button(parent, text="选择文件", command=self._select_file_for_word_cloud).pack(pady=10)
 
         # 列名选择
         col_frame = tk.Frame(parent)
-        col_frame.pack(pady=5)
+        col_frame.pack(pady=10)
         tk.Label(col_frame, text="选择列名:").pack(side=tk.LEFT)
         self.column_combo = ttk.Combobox(col_frame, state="readonly")
         self.column_combo.pack(side=tk.LEFT, padx=5)
 
         # 颜色映射选择
         cmap_frame = tk.Frame(parent)
-        cmap_frame.pack(pady=5)
+        cmap_frame.pack(pady=10)
         tk.Label(cmap_frame, text="选择颜色映射:").pack(side=tk.LEFT)
         self.colormap_combo = ttk.Combobox(cmap_frame, state="readonly", values=self._get_colormaps())
         self.colormap_combo.current(0)
@@ -243,8 +265,9 @@ class BillAnalyzerUI:
 
         # 掩码图像选择
         mask_frame = tk.Frame(parent)
-        mask_frame.pack(pady=5)
+        mask_frame.pack(pady=10)
         tk.Button(mask_frame, text="选择掩码图", command=self._select_mask_image).pack(side=tk.LEFT)
+
         tk.Label(parent, textvariable=self.mask_image_path).pack(pady=5)
 
         # 生成词云按钮
@@ -252,6 +275,11 @@ class BillAnalyzerUI:
 
         # 保存图片按钮
         tk.Button(parent, text="保存图片", command=self._save_word_cloud_image).pack(pady=10)
+
+        # 状态栏
+        self.wc_status_var = tk.StringVar()
+        self.wc_status_label = tk.Label(parent, textvariable=self.wc_status_var, fg="gray")
+        self.wc_status_label.pack(pady=5)
 
     def _create_visualization_ui(self, parent):
         """创建可视化生成标签页UI
@@ -275,7 +303,7 @@ class BillAnalyzerUI:
         self.chart_type_combo.pack(side=tk.LEFT, padx=5)
 
         year_frame = tk.Frame(parent)
-        year_frame.pack(pady=5)
+        year_frame.pack(pady=10)
         tk.Label(year_frame, text="年份:").pack(side=tk.LEFT)
         self.year_combo = ttk.Combobox(year_frame, state="readonly", width=15)
         self.year_combo.pack(side=tk.LEFT, padx=5)
@@ -286,6 +314,99 @@ class BillAnalyzerUI:
         self.vis_status_var = tk.StringVar()
         self.vis_status_label = tk.Label(parent, textvariable=self.vis_status_var, fg="gray")
         self.vis_status_label.pack(pady=5)
+
+    def _create_echarts_ui(self, parent):
+        """创建ECharts可视化标签页UI
+
+        Args:
+            parent: 父容器控件
+        """
+        self.file_path_var_echarts = tk.StringVar()
+        tk.Label(parent, textvariable=self.file_path_var_echarts).pack(pady=10)
+
+        tk.Button(parent, text="选择文件", command=self._select_file_for_echarts).pack(pady=10)
+
+        chart_frame = tk.Frame(parent)
+        chart_frame.pack(pady=10)
+        tk.Label(chart_frame, text="图表类型:").pack(side=tk.LEFT)
+        self.echarts_type_combo = ttk.Combobox(
+            chart_frame, state="readonly",
+            values=list(ECHARTS_CHART_TYPES.keys()),
+            width=20,
+        )
+        self.echarts_type_combo.current(0)
+        self.echarts_type_combo.pack(side=tk.LEFT, padx=5)
+
+        year_frame = tk.Frame(parent)
+        year_frame.pack(pady=10)
+        tk.Label(year_frame, text="年份:").pack(side=tk.LEFT)
+        self.echarts_year_combo = ttk.Combobox(year_frame, state="readonly", width=15)
+        self.echarts_year_combo.pack(side=tk.LEFT, padx=5)
+
+        self.echarts_btn = tk.Button(parent, text="生成图表", command=self._generate_echarts)
+        self.echarts_btn.pack(pady=20)
+
+        self.echarts_status_var = tk.StringVar()
+        self.echarts_status_label = tk.Label(parent, textvariable=self.echarts_status_var, fg="gray")
+        self.echarts_status_label.pack(pady=5)
+
+
+    def _select_file_for_echarts(self):
+        """选择ECharts可视化数据源文件，并自动加载年份列表"""
+        path = filedialog.askopenfilename(
+            filetypes=[("CSV 文件", "*.csv"), ("Excel 文件", "*.xlsx *.xls")]
+        )
+        if path:
+            self.file_path_var_echarts.set(f"当前文件: {path}")
+            try:
+                years = get_available_years(path)
+                self.echarts_year_combo['values'] = [str(y) for y in years]
+                if years:
+                    self.echarts_year_combo.current(0)
+            except Exception as e:
+                messagebox.showerror("错误", f"读取年份失败: {str(e)}")
+
+    def _generate_echarts(self):
+        """根据用户选择的图表类型和年份生成ECharts HTML并打开"""
+        chart_label = self.echarts_type_combo.get()
+        chart_type = ECHARTS_CHART_TYPES.get(chart_label, "waterfall")
+
+        file_path = self.file_path_var_echarts.get().split(': ')[-1]
+        year_selection = self.echarts_year_combo.get()
+
+        self.echarts_btn.config(state=tk.DISABLED)
+        self.echarts_status_var.set(f"正在生成「{chart_label}」，请稍候...")
+        self.echarts_status_label.config(fg="blue")
+
+        def task():
+            try:
+                if not file_path:
+                    raise ValueError("未选择文件")
+
+                year_param = int(year_selection) if year_selection else None
+
+                output_dir = self.current_dir
+                html_path = generate_echarts_html(file_path, output_dir, chart_type,
+                                                  year=year_param)
+
+                self.root.after(0, lambda: self._on_echarts_done(html_path, chart_label))
+            except Exception as e:
+                self.root.after(0, lambda: self._on_echarts_error(str(e)))
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def _on_echarts_done(self, html_path: str, chart_label: str):
+        """ECharts生成完成后的回调"""
+        self.echarts_btn.config(state=tk.NORMAL)
+        self.echarts_status_var.set(f"✓ 「{chart_label}」已保存至：{html_path}")
+        self.echarts_status_label.config(fg="green")
+        webbrowser.open(Path(html_path).as_uri())
+
+    def _on_echarts_error(self, error_msg: str):
+        """ECharts生成失败的回调"""
+        self.echarts_btn.config(state=tk.NORMAL)
+        self.echarts_status_var.set(f"✗ 生成失败：{error_msg}")
+        self.echarts_status_label.config(fg="red")
 
     def _select_file_for_visualization(self):
         """选择可视化数据源文件，并自动加载年份列表"""
@@ -310,17 +431,18 @@ class BillAnalyzerUI:
         chart_label = self.chart_type_combo.get()
         chart_type = CHART_TYPES.get(chart_label, "heatmap")
 
+        file_path = self.file_path_var_vis.get().split(': ')[-1]
+        year_selection = self.year_combo.get()
+
         self.vis_btn.config(state=tk.DISABLED)
         self.vis_status_var.set(f"正在生成「{chart_label}」，请稍候...")
         self.vis_status_label.config(fg="blue")
 
         def task():
             try:
-                file_path = self.file_path_var_vis.get().split(': ')[-1]
                 if not file_path:
                     raise ValueError("未选择文件")
 
-                year_selection = self.year_combo.get()
                 if not year_selection or year_selection.startswith("全部"):
                     year_param = 'all'
                 else:
@@ -401,8 +523,6 @@ class BillAnalyzerUI:
 
     def _show_about(self):
         """显示关于对话框"""
-        import webbrowser
-
         win = tk.Toplevel(self.root)
         win.title("关于")
         win.resizable(False, False)
@@ -440,19 +560,16 @@ class BillAnalyzerUI:
         """打开使用说明"""
         help_path = os.path.join(os.path.dirname(__file__), "项目使用说明书.html")
         if os.path.exists(help_path):
-            import webbrowser
             webbrowser.open(f"file://{os.path.abspath(help_path)}")
         else:
             messagebox.showwarning("提示", "未找到使用说明文件")
 
     def _show_license(self):
         """显示开源许可"""
-        import webbrowser
         webbrowser.open("https://creativecommons.org/licenses/by/4.0/deed.zh-hans")
 
     def _show_other_projects(self):
         """显示项目里使用到的其他项目"""
-        import webbrowser
         win = tk.Toplevel(self.root)
         win.title("使用过的项目")
         win.resizable(False, False)
@@ -508,12 +625,12 @@ class BillAnalyzerUI:
         link_label.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/atelier-anchor/smiley-sans"))
 
     def _select_main_file(self):
-        """选择账单文件（支持CSV和Excel）"""
+        """选择账单文件（支持 CSV 和 Excel）"""
         path = filedialog.askopenfilename(
             filetypes=[("CSV 文件", "*.csv"), ("Excel 文件", "*.xlsx *.xls")]
         )
         if path:
-            self.file_path_var_main.set(f"当前文件: {path}")
+            self.file_path_var_main.set(f"当前文件：{path}")
 
     def _select_file_for_word_cloud(self):
         """选择词云数据源文件，并自动加载列名"""
@@ -523,7 +640,7 @@ class BillAnalyzerUI:
         if not path:
             return
 
-        self.file_path_var_wc.set(path)
+        self.file_path_var_wc.set(f"当前文件: {path}")
         try:
             if path.endswith('.csv'):
                 encoding = _detect_encoding(path)
@@ -546,101 +663,65 @@ class BillAnalyzerUI:
         if path:
             self.mask_image_path.set(path)
 
-    def _process_file(self):
-        """处理账单文件（使用多线程避免UI阻塞）
-
-        流程：
-        1. 获取文件路径和账单类型
-        2. 在子线程中调用对应处理器
-        3. 将结果渲染到Canvas
-        """
-
-        def task():
-            try:
-                # 从 "当前文件: xxx" 格式中提取路径
-                file_path = self.file_path_var_main.get().split(': ')[-1]
-                if not file_path:
-                    raise ValueError("未选择文件")
-
-                processor = BILL_PROCESSORS.get(self.bill_type.get())
-                if processor is None:
-                    raise ValueError(f"不支持的账单类型: {self.bill_type.get()}")
-
-                result = processor(file_path)
-                if result is None:
-                    raise ValueError("处理结果为空，请检查文件格式")
-
-                self.current_text = str(result)[:5000]
-                # 回到主线程更新UI
-                self.root.after(0, lambda: self._apply_font(self.font_var.get()))
-            except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", f"处理失败: {str(e)}"))
-
-        threading.Thread(target=task, daemon=True).start()
+    def _get_colormaps(self):
+        """获取所有可用的 matplotlib 颜色映射名称"""
+        return sorted(plt.colormaps())
 
     def _apply_font_size(self):
         """应用当前选择的字号"""
         self._apply_font(self.font_var.get())
 
     def _apply_font(self, font_name):
-        """应用指定字体到文本渲染
-
-        将当前分析结果文本使用指定字体渲染为图片，
-        然后显示在Canvas上。
+        """应用选中的字体
 
         Args:
-            font_name (str): 字体名称（不带扩展名）
+            font_name: 字体名称（不含扩展名）
         """
-        try:
-            text_content = self.current_text
-            font_size = int(self.size_var.get())
+        self.font_var.set(font_name)
 
-            # 创建白色背景图片
-            image = Image.new("RGB", (800, 500), "white")
-            draw = ImageDraw.Draw(image)
+    def _process_file(self):
+        """处理账单文件（使用多线程避免 UI 阻塞）
 
-            # 获取字体文件路径
-            font_path = self._get_font_path(font_name)
-            if not font_path:
-                raise FileNotFoundError(f"未找到字体文件: {font_name}")
-
-            # 注册字体到 matplotlib（用于词云等模块）
-            fontManager.addfont(font_path)
-            font_prop = FontProperties(fname=font_path)
-            plt.rcParams['font.sans-serif'] = [font_prop.get_name()]
-            plt.rcParams['axes.unicode_minus'] = False
-
-            # 加载字体并渲染文本
-            image_font = ImageFont.truetype(font_path, font_size)
-            x, y = 10, 10
-            for line in text_content.split('\n'):
-                bbox = draw.textbbox((x, y), line, font=image_font)
-                draw.text((x, y), line, font=image_font, fill="black")
-                y += bbox[3] - bbox[1] + 5
-
-            # 更新Canvas显示
-            self.current_image = ImageTk.PhotoImage(image)
-            self.output_canvas.delete("all")
-            self.output_canvas.create_image(0, 0, anchor=tk.NW, image=self.current_image)
-
-        except Exception as e:
-            error_details = (
-                f"字体加载失败详细诊断：\n"
-                f"1. 字体目录：{self.font_dir}\n"
-                f"2. 尝试加载的字体：{font_name}\n"
-                f"3. 当前工作目录：{os.getcwd()}\n"
-                f"4. 错误类型：{type(e).__name__}\n"
-                f"5. 错误详情：{str(e)}"
-            )
-            messagebox.showerror("字体错误", error_details)
-
-    def _get_colormaps(self):
-        """获取所有可用的matplotlib颜色映射名称
-
-        Returns:
-            list: 排序后的颜色映射名称列表
+        流程：
+        1. 获取文件路径和账单类型
+        2. 在子线程中调用对应处理器
+        3. 将结果渲染到 Canvas
         """
-        return sorted(plt.colormaps())
+        file_path = self.file_path_var_main.get().split(': ')[-1]
+        bill_type = self.bill_type.get()
+
+        self.bill_status_var.set(f"正在分析「{bill_type}」账单，请稍候...")
+        self.bill_status_label.config(fg="blue")
+
+        def task():
+            try:
+                if not file_path:
+                    raise ValueError("未选择文件")
+
+                processor = BILL_PROCESSORS.get(bill_type)
+                if processor is None:
+                    raise ValueError(f"不支持的账单类型：{bill_type}")
+
+                result = processor(file_path)
+                if result is None:
+                    raise ValueError("处理结果为空，请检查文件格式")
+
+                self.current_text = str(result)[:5000]
+                self._source_file_path = file_path
+                self._source_bill_type = bill_type
+                self.root.after(0, lambda: (
+                    self.bill_status_var.set(f"✓ 「{bill_type}」账单分析完成"),
+                    self.bill_status_label.config(fg="green"),
+                ))
+            except Exception as e:
+                error_msg = str(e)
+                self.root.after(0, lambda err=error_msg: (
+                    self.bill_status_var.set(f"✗ 分析失败：{err}"),
+                    self.bill_status_label.config(fg="red"),
+                    messagebox.showerror("错误", f"处理失败：{err}"),
+                ))
+
+        threading.Thread(target=task, daemon=True).start()
 
     def _generate_word_cloud(self):
         """生成词云主逻辑
@@ -649,9 +730,9 @@ class BillAnalyzerUI:
         1. 验证输入参数（文件、列名、颜色映射）
         2. 加载字体文件
         3. 调用词云生成函数
-        4. 使用matplotlib显示结果
+        4. 使用 matplotlib 显示结果
         """
-        file_path = self.file_path_var_wc.get()
+        file_path = self.file_path_var_wc.get().split(': ')[-1]
         column_name = self.column_combo.get()
         colormap = self.colormap_combo.get()
 
@@ -660,11 +741,14 @@ class BillAnalyzerUI:
             return
 
         try:
+            self.wc_status_var.set("正在生成词云，请稍候...")
+            self.wc_status_label.config(fg="blue")
+
             # 获取字体路径
             font_name = self.font_var.get()
             font_path = self._get_font_path(font_name)
             if not font_path:
-                raise ValueError(f"未找到字体文件: {font_name}")
+                raise ValueError(f"未找到字体文件：{font_name}")
 
             # 调用词云生成函数
             self.current_wordcloud_image = ci_yun(
@@ -675,6 +759,9 @@ class BillAnalyzerUI:
                 font_path=font_path,
             )
 
+            self.wc_status_var.set("✓ 词云生成成功！")
+            self.wc_status_label.config(fg="green")
+
             # 使用 matplotlib 显示图片
             plt.figure(figsize=(10, 8))
             plt.imshow(self.current_wordcloud_image)
@@ -682,9 +769,11 @@ class BillAnalyzerUI:
             plt.title("生成的词云图", fontsize=16)
             plt.show()
 
-            messagebox.showinfo("成功", "词云生成成功！")
         except Exception as e:
-            messagebox.showerror("错误", f"词云生成失败: {str(e)}")
+            error_msg = str(e)
+            self.wc_status_var.set(f"✗ 词云生成失败：{error_msg}")
+            self.wc_status_label.config(fg="red")
+            messagebox.showerror("错误", f"词云生成失败：{error_msg}")
 
     def _save_word_cloud_image(self):
         """保存词云图片到本地
@@ -695,7 +784,7 @@ class BillAnalyzerUI:
             messagebox.showwarning("警告", "请先生成词云")
             return
 
-        file_path = self.file_path_var_wc.get()
+        file_path = self.file_path_var_wc.get().split(': ')[-1]
         column_name = self.column_combo.get()
         colormap = self.colormap_combo.get()
 
@@ -719,13 +808,17 @@ class BillAnalyzerUI:
             )
             if save_path:
                 self.current_wordcloud_image.save(save_path)
-                messagebox.showinfo("成功", f"词云图片已保存：{save_path}")
+                self.wc_status_var.set(f"✓ 词云图片已保存：{save_path}")
+                self.wc_status_label.config(fg="green")
             else:
-                messagebox.showinfo("取消", "保存操作已取消")
+                self.wc_status_var.set("保存操作已取消")
+                self.wc_status_label.config(fg="gray")
 
         except Exception as e:
-            messagebox.showerror("错误", f"保存词云图片失败: {str(e)}")
-
+            error_msg = str(e)
+            self.wc_status_var.set(f"✗ 保存失败：{error_msg}")
+            self.wc_status_label.config(fg="red")
+            messagebox.showerror("错误", f"保存词云图片失败：{error_msg}")
 
 if __name__ == "__main__":
     root = tk.Tk()
