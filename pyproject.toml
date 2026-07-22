@@ -5,7 +5,7 @@ index-url = "https://mirrors.aliyun.com/pypi/simple/"
 [project]
 name = "bill-analyzer"
 version = "1.0.0"
-description = "在此处添加您的描述"
+description = "项目用到的包"
 requires-python = ">=3.13"
 dependencies = [
     "attrs==26.1.0",

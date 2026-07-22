@@ -386,9 +386,126 @@ class BillAnalyzerUI:
         font_menu.add_cascade(label="字号", menu=size_menu)
         menu_bar.add_cascade(label="字体", menu=font_menu)
 
+        # 关于子菜单
+        about_menu = tk.Menu(font_menu, tearoff=0)
+        about_menu.add_command(label="关于本软件", command=self._show_about)
+        about_menu.add_command(label="使用说明", command=self._show_help)
+        about_menu.add_command(label="本项目的开源许可", command=self._show_license)
+        about_menu.add_separator()
+        about_menu.add_command(label="项目里使用到的其他项目", command=self._show_other_projects)
+        menu_bar.add_cascade(label="关于", menu=about_menu)
+
         self.root.config(menu=menu_bar)
 
     # ======================== 事件处理 ========================
+
+    def _show_about(self):
+        """显示关于对话框"""
+        import webbrowser
+
+        win = tk.Toplevel(self.root)
+        win.title("关于")
+        win.resizable(False, False)
+        win.transient(self.root)
+        win.grab_set()
+
+        win_width, win_height = 360, 320
+        screen_w = win.winfo_screenwidth()
+        screen_h = win.winfo_screenheight()
+        x = (screen_w - win_width) // 2
+        y = (screen_h - win_height) // 2
+        win.geometry(f"{win_width}x{win_height}+{x}+{y}")
+
+        frame = ttk.Frame(win, padding=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(frame, text="账单分析工具 v1.1.1", font=("", 14, "bold")).pack(pady=(0, 10))
+        ttk.Label(frame, text="一款支持微信支付、支付宝等账单的\n数据分析与可视化工具。", justify=tk.CENTER).pack(
+            pady=(0, 10))
+        ttk.Label(frame, text="功能包括：\n• 账单数据解析与汇总\n• 词云生成\n• 消费趋势可视化\n• 日历热力图",
+                  justify=tk.LEFT).pack(pady=(0, 10))
+
+        link_label = ttk.Label(
+            frame,
+            text="项目地址：GitHub",
+            foreground="blue",
+            cursor="hand2",
+        )
+        link_label.pack(pady=(0, 5))
+        link_label.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/ee19971/Bill_Analyzer"))
+
+        ttk.Button(frame, text="关闭", command=win.destroy).pack(pady=(10, 0))
+
+    def _show_help(self):
+        """打开使用说明"""
+        help_path = os.path.join(os.path.dirname(__file__), "项目使用说明书.html")
+        if os.path.exists(help_path):
+            import webbrowser
+            webbrowser.open(f"file://{os.path.abspath(help_path)}")
+        else:
+            messagebox.showwarning("提示", "未找到使用说明文件")
+
+    def _show_license(self):
+        """显示开源许可"""
+        import webbrowser
+        webbrowser.open("https://creativecommons.org/licenses/by/4.0/deed.zh-hans")
+
+    def _show_other_projects(self):
+        """显示项目里使用到的其他项目"""
+        import webbrowser
+        win = tk.Toplevel(self.root)
+        win.title("使用过的项目")
+        win.resizable(False, False)
+        win.transient(self.root)
+        win.grab_set()
+
+        win_width, win_height = 360, 320
+        screen_w = win.winfo_screenwidth()
+        screen_h = win.winfo_screenheight()
+        x = (screen_w - win_width) // 2
+        y = (screen_h - win_height) // 2
+        win.geometry(f"{win_width}x{win_height}+{x}+{y}")
+        frame = ttk.Frame(win, padding=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(frame, text="图标", font=("", 12, "bold")).pack(pady=(0, 10))
+        link_label = ttk.Label(
+            frame,
+            text="REMIX ICON",
+            foreground="blue",
+            cursor="hand2",
+        )
+        link_label.pack(pady=(0, 5))
+        link_label.bind("<Button-1>", lambda e: webbrowser.open("https://remixicon.com/"))
+
+        ttk.Label(frame, text="字体", font=("", 12, "bold")).pack(pady=(0, 10))
+        link_label = ttk.Label(
+            frame,
+            text="霞鹜臻楷",
+            foreground="blue",
+            cursor="hand2",
+            font=("", 10, "bold")
+        )
+        link_label.pack(pady=(0, 5))
+        link_label.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/lxgw/LxgwZhenKai"))
+        link_label = ttk.Label(
+            frame,
+            text="霞鹜新晰黑",
+            foreground="blue",
+            cursor="hand2",
+            font=("", 10, "bold")
+        )
+        link_label.pack(pady=(0, 5))
+        link_label.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/lxgw/LxgwNeoXiHei"))
+        link_label = ttk.Label(
+            frame,
+            text="得意黑",
+            foreground="blue",
+            cursor="hand2",
+            font=("", 10, "bold")
+        )
+        link_label.pack(pady=(0, 5))
+        link_label.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/atelier-anchor/smiley-sans"))
 
     def _select_main_file(self):
         """选择账单文件（支持CSV和Excel）"""
