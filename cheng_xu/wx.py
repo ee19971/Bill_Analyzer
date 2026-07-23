@@ -70,28 +70,53 @@ def _fix_shifted_rows(wx: pd.DataFrame) -> pd.DataFrame:
 
 
 def wx_csv(file_path: str) -> str:
-    """解析微信支付账单CSV文件并生成统计报告
+    """解析微信支付账单文件并生成统计报告
 
     Args:
-        file_path (str): 微信账单CSV文件路径，需符合微信官方导出格式
+        file_path (str): 微信账单文件路径（支持CSV和Excel格式）
 
     Returns:
         str: 包含统计结果的格式化字符串，涵盖总收支、极值交易、时间分布等
 
     Raises:
-        IndexError: CSV文件中缺失关键字段
+        IndexError: 文件中缺失关键字段
         UnicodeDecodeError: 文件编码异常
-        KeyError: CSV列名与预期不符
+        KeyError: 列名与预期不符
     """
     # --- 解析文件头部统计信息 ---
-    header_offset = search_file_line(file_path, '交易时间,', 'utf-8')[0]['line'] - 1
-    record_count = search_file_line(file_path, '笔记录', 'utf-8')[0]['numbers']
-    income_count = search_file_line(file_path, '收入：', 'utf-8')[0]['numbers']
-    expense_count = search_file_line(file_path, '支出：', 'utf-8')[0]['numbers']
-    neutral_count = search_file_line(file_path, '中性交易：', 'utf-8')[0]['numbers']
+    # Excel文件用空格分隔，搜索时不带逗号；CSV文件用逗号分隔
+    is_excel = file_path.lower().endswith(('.xlsx', '.xls'))
+    header_keyword = '交易时间' if is_excel else '交易时间,'
+
+    header_result = search_file_line(file_path, header_keyword, 'utf-8')
+    if not header_result:
+        raise ValueError("未找到表头行，请检查文件格式")
+    header_offset = header_result[0]['line'] - 1
+
+    # CSV文件有摘要行，Excel文件没有，需要从数据中计算
+    if is_excel:
+        record_count = [0]
+        income_count = [0]
+        expense_count = [0]
+        neutral_count = [0]
+    else:
+        record_result = search_file_line(file_path, '笔记录', 'utf-8')
+        record_count = record_result[0]['numbers'] if record_result else [0]
+
+        income_result = search_file_line(file_path, '收入：', 'utf-8')
+        income_count = income_result[0]['numbers'] if income_result else [0]
+
+        expense_result = search_file_line(file_path, '支出：', 'utf-8')
+        expense_count = expense_result[0]['numbers'] if expense_result else [0]
+
+        neutral_result = search_file_line(file_path, '中性交易：', 'utf-8')
+        neutral_count = neutral_result[0]['numbers'] if neutral_result else [0]
 
     # --- 数据读取与清洗 ---
-    wx = pd.read_csv(file_path, skiprows=header_offset)
+    if is_excel:
+        wx = pd.read_excel(file_path, skiprows=header_offset)
+    else:
+        wx = pd.read_csv(file_path, skiprows=header_offset)
 
     # 修复列错位问题
     wx = _fix_shifted_rows(wx)
@@ -105,10 +130,10 @@ def wx_csv(file_path: str) -> str:
     wx.dropna(subset=["交易时间"], inplace=True)
 
     # 将 '/' 标记为中性交易
-    wx["收/支"] = wx["收/支"].str.replace('/', '中性交易')
+    wx["收/支"] = wx["收/支"].astype(str).str.replace('/', '中性交易')
 
-    # 检查金额列是否存在数据错位
-    if wx["金额(元)"].str.contains("收入").any() or wx["金额(元)"].str.contains("支出").any():
+    # 检查金额列是否存在数据错位（仅对CSV文件检查）
+    if not is_excel and (wx["金额(元)"].str.contains("收入").any() or wx["金额(元)"].str.contains("支出").any()):
         print("存在收入或支出字段，请检查数据")
 
     # --- 金额拆分 ---
@@ -163,14 +188,24 @@ def wx_csv(file_path: str) -> str:
     max_expense_month_amount = format_decimal(monthly["max_expense_month_amount"])
     max_income_month_amount = format_decimal(monthly["max_income_month_amount"])
 
+    # 计算交易笔数（CSV文件从摘要行获取，Excel文件从数据计算）
+    if is_excel:
+        expense_tx_count = int((wx["收/支"] == "支出").sum())
+        income_tx_count = int((wx["收/支"] == "收入").sum())
+        neutral_tx_count = int((wx["收/支"] == "中性交易").sum())
+    else:
+        expense_tx_count = int(expense_count[0]) if expense_count else 0
+        income_tx_count = int(income_count[0]) if income_count else 0
+        neutral_tx_count = int(neutral_count[0]) if neutral_count else 0
+
     # --- 生成报告 ---
     return (
-        f"在{total_days}天里，你有{int(expense_count[0])}笔支出共花费了{total_expense}元，"
+        f"在{total_days}天里，你有{expense_tx_count}笔支出共花费了{total_expense}元，"
         f"平均每天花费{avg_daily_expense}元。\n"
-        f"你有{int(income_count[0])}笔收入总共{total_income}元，"
+        f"你有{income_tx_count}笔收入总共{total_income}元，"
         f"平均每天收入{avg_daily_income}元。\n"
         f"不计收支的金额(充值/提现/理财通购买/零钱通存取/信用卡还款等交易)有"
-        f"{int(neutral_count[0])}笔共为{neutral_total}元。\n"
+        f"{neutral_tx_count}笔共为{neutral_total}元。\n"
         f"花费最多的月份是{monthly['max_expense_month']}，共{max_expense_month_amount}元。\n"
         f"收入最多的月份是{monthly['max_income_month']}，共{max_income_month_amount}元。\n"
         f"{date_info['max_expense_date']}是你花费最多的一天，花费了{max_expense}元；"

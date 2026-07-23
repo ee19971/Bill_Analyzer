@@ -30,10 +30,10 @@ from .gong_yong_han_shu import (
 
 
 def zfb_app_zhong_wen_csv(file_path: str) -> str:
-    """解析支付宝APP中文版账单CSV文件并生成统计报告
+    """解析支付宝APP中文版账单文件并生成统计报告
 
     Args:
-        file_path (str): 支付宝APP账单CSV文件路径（GB18030编码）
+        file_path (str): 支付宝APP账单文件路径（支持CSV和Excel格式）
 
     Returns:
         str: 包含统计结果的格式化字符串
@@ -45,14 +45,36 @@ def zfb_app_zhong_wen_csv(file_path: str) -> str:
         - 末尾可能有一个无用的 'Unnamed: 12' 列
     """
     # --- 解析文件头部摘要信息 ---
-    header_offset = search_file_line(file_path, '交易时间,')[0]['line'] - 1
-    _record_info = search_file_line(file_path, '笔记录')[0]['content']
-    _income_info = search_file_line(file_path, '收入：')[0]['content']
-    _expense_info = search_file_line(file_path, '支出：')[0]['content']
-    _neutral_info = search_file_line(file_path, '不计收支：')[0]['content']
+    # Excel文件用空格分隔，搜索时不带逗号；CSV文件用逗号分隔
+    is_excel = file_path.lower().endswith(('.xlsx', '.xls'))
+    header_keyword = '交易时间' if is_excel else '交易时间,'
+
+    header_result = search_file_line(file_path, header_keyword)
+    if not header_result:
+        # 尝试检测是否是网页版账单
+        web_check = search_file_line(file_path, '发生时间')
+        if web_check:
+            raise ValueError("此文件是支付宝网页版账单，请选择「支付宝网页导出」类型")
+        raise ValueError("未找到表头行，请检查文件格式或选择正确的账单类型")
+    header_offset = header_result[0]['line'] - 1
+
+    record_result = search_file_line(file_path, '笔记录')
+    _record_info = record_result[0]['content'] if record_result else ''
+
+    income_result = search_file_line(file_path, '收入')
+    _income_info = income_result[0]['content'] if income_result else ''
+
+    expense_result = search_file_line(file_path, '支出')
+    _expense_info = expense_result[0]['content'] if expense_result else ''
+
+    neutral_result = search_file_line(file_path, '不计收支')
+    _neutral_info = neutral_result[0]['content'] if neutral_result else ''
 
     # --- 数据读取与清洗 ---
-    df = pd.read_csv(file_path, skiprows=header_offset, encoding='GB18030')
+    if is_excel:
+        df = pd.read_excel(file_path, skiprows=header_offset)
+    else:
+        df = pd.read_csv(file_path, skiprows=header_offset, encoding='GB18030')
 
     # 删除无用列
     if 'Unnamed: 12' in df.columns:

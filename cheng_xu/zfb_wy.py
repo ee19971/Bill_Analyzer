@@ -28,10 +28,10 @@ from .gong_yong_han_shu import (
 
 
 def zfb_wy_csv(file_path: str) -> str:
-    """解析支付宝网页版账单CSV文件并生成统计报告
+    """解析支付宝网页版账单文件并生成统计报告
 
     Args:
-        file_path (str): 支付宝网页版账单CSV文件路径（GB18030编码）
+        file_path (str): 支付宝网页版账单文件路径（支持CSV和Excel格式）
 
     Returns:
         str: 包含统计结果的格式化字符串
@@ -43,9 +43,20 @@ def zfb_wy_csv(file_path: str) -> str:
         - 金额列已分为"支出金额（-元）"和"收入金额（+元）"两列
     """
     # --- 数据读取（自动检测表头位置，跳过 # 注释行） ---
-    skip_rows = find_csv_header_offset(file_path, 'GB18030')
-    zfb = pd.read_csv(file_path, encoding="gb18030", skiprows=skip_rows,
-                      comment='#')
+    is_excel = file_path.lower().endswith(('.xlsx', '.xls'))
+    if is_excel:
+        skip_rows = find_csv_header_offset(file_path, 'utf-8')
+        zfb = pd.read_excel(file_path, skiprows=skip_rows)
+    else:
+        skip_rows = find_csv_header_offset(file_path, 'GB18030')
+        zfb = pd.read_csv(file_path, encoding="gb18030", skiprows=skip_rows,
+                          comment='#')
+
+    # 验证必需的列是否存在
+    required_cols = ["发生时间", "支出金额（-元）", "收入金额（+元）"]
+    missing_cols = [col for col in required_cols if col not in zfb.columns]
+    if missing_cols:
+        raise ValueError(f"文件格式不正确，缺少以下列：{', '.join(missing_cols)}。请确认选择了正确的账单类型。")
 
     # --- 数据清洗 ---
     zfb["发生时间"] = pd.to_datetime(zfb["发生时间"], errors="coerce")

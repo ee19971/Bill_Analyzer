@@ -29,7 +29,6 @@ from cheng_xu.ci_yun import _detect_encoding, _read_data_file
 from cheng_xu.ke_shi_hua import generate_chart_html, CHART_TYPES, get_available_years
 from cheng_xu.ke_shi_hua_echarts import generate_echarts_html, ECHARTS_CHART_TYPES
 
-
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -203,7 +202,6 @@ class BillAnalyzerUI:
         self.notebook.add(echarts_frame, text="可视化-echarts")
         self._create_echarts_ui(echarts_frame)
 
-
     def _create_bill_analysis_ui(self, parent):
         """创建账单分析标签页UI
 
@@ -231,9 +229,10 @@ class BillAnalyzerUI:
         self.bill_status_label = tk.Label(parent, textvariable=self.bill_status_var, fg="gray")
         self.bill_status_label.pack(pady=5)
 
-        # 输出画布（用于显示分析结果图像）
-        self.output_canvas = tk.Canvas(parent, height=400, bg="white")
-        self.output_canvas.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+        # 输出文本框（用于显示分析结果）
+        self.output_text = tk.Text(parent, height=20, wrap=tk.WORD)
+        self.output_text.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+        self.output_text.config(state=tk.DISABLED)
 
     def _create_word_cloud_ui(self, parent):
         """创建词云生成标签页UI
@@ -349,7 +348,6 @@ class BillAnalyzerUI:
         self.echarts_status_var = tk.StringVar()
         self.echarts_status_label = tk.Label(parent, textvariable=self.echarts_status_var, fg="gray")
         self.echarts_status_label.pack(pady=5)
-
 
     def _select_file_for_echarts(self):
         """选择ECharts可视化数据源文件，并自动加载年份列表"""
@@ -630,7 +628,7 @@ class BillAnalyzerUI:
             filetypes=[("CSV 文件", "*.csv"), ("Excel 文件", "*.xlsx *.xls")]
         )
         if path:
-            self.file_path_var_main.set(f"当前文件：{path}")
+            self.file_path_var_main.set(f"当前文件: {path}")
 
     def _select_file_for_word_cloud(self):
         """选择词云数据源文件，并自动加载列名"""
@@ -685,7 +683,7 @@ class BillAnalyzerUI:
         流程：
         1. 获取文件路径和账单类型
         2. 在子线程中调用对应处理器
-        3. 将结果渲染到 Canvas
+        3. 将结果渲染到文本框
         """
         file_path = self.file_path_var_main.get().split(': ')[-1]
         bill_type = self.bill_type.get()
@@ -709,19 +707,29 @@ class BillAnalyzerUI:
                 self.current_text = str(result)[:5000]
                 self._source_file_path = file_path
                 self._source_bill_type = bill_type
-                self.root.after(0, lambda: (
-                    self.bill_status_var.set(f"✓ 「{bill_type}」账单分析完成"),
-                    self.bill_status_label.config(fg="green"),
-                ))
+                self.root.after(0, lambda: self._show_analysis_result(self.current_text, bill_type))
             except Exception as e:
                 error_msg = str(e)
                 self.root.after(0, lambda err=error_msg: (
                     self.bill_status_var.set(f"✗ 分析失败：{err}"),
                     self.bill_status_label.config(fg="red"),
-                    messagebox.showerror("错误", f"处理失败：{err}"),
+                    self._show_analysis_text(f"分析失败：{err}"),
                 ))
 
         threading.Thread(target=task, daemon=True).start()
+
+    def _show_analysis_result(self, text: str, bill_type: str):
+        """在文本框中显示分析结果"""
+        self.bill_status_var.set(f"✓ 「{bill_type}」账单分析完成")
+        self.bill_status_label.config(fg="green")
+        self._show_analysis_text(text)
+
+    def _show_analysis_text(self, text: str):
+        """在文本框中显示文本内容"""
+        self.output_text.config(state=tk.NORMAL)
+        self.output_text.delete('1.0', tk.END)
+        self.output_text.insert(tk.END, text)
+        self.output_text.config(state=tk.DISABLED)
 
     def _generate_word_cloud(self):
         """生成词云主逻辑
@@ -819,6 +827,7 @@ class BillAnalyzerUI:
             self.wc_status_var.set(f"✗ 保存失败：{error_msg}")
             self.wc_status_label.config(fg="red")
             messagebox.showerror("错误", f"保存词云图片失败：{error_msg}")
+
 
 if __name__ == "__main__":
     root = tk.Tk()
