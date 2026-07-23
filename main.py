@@ -15,6 +15,8 @@ import logging
 import threading
 import tkinter as tk
 import tkinter.font as tkfont
+import ctypes
+import ctypes.wintypes
 import webbrowser
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -72,7 +74,7 @@ class BillAnalyzerUI:
         self.font_dir = os.path.join(self.current_dir, "f_ont")
         self.default_font = "LXGWNeoXiHeiPlus.ttf"
         self.default_font_name = os.path.splitext(self.default_font)[0]
-        self.size_var = tk.StringVar(value="15")
+        self.size_var = tk.StringVar(value="10")
         self.file_path_var_main = tk.StringVar()
         self.file_path_var_vis = tk.StringVar()
         self.bill_type = tk.StringVar(value=BILL_TYPES[0])
@@ -230,9 +232,24 @@ class BillAnalyzerUI:
         self.bill_status_label = tk.Label(parent, textvariable=self.bill_status_var, fg="gray")
         self.bill_status_label.pack(pady=5)
 
-        # 输出文本框（用于显示分析结果）
-        self.output_text = tk.Text(parent, height=20, wrap=tk.WORD)
-        self.output_text.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+        # 输出文本框（用于显示分析结果）- 使用grid布局确保滚动条稳定
+        text_frame = tk.Frame(parent)
+        text_frame.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+        text_frame.grid_rowconfigure(0, weight=1)
+        text_frame.grid_columnconfigure(0, weight=1)
+        
+        self.output_text = tk.Text(text_frame, height=20, wrap=tk.NONE)
+        self.output_text.grid(row=0, column=0, sticky='nsew')
+        
+        # 垂直滚动条
+        self.v_scrollbar = tk.Scrollbar(text_frame, orient=tk.VERTICAL, command=self.output_text.yview)
+        self.v_scrollbar.grid(row=0, column=1, sticky='ns')
+        
+        # 水平滚动条
+        self.h_scrollbar = tk.Scrollbar(text_frame, orient=tk.HORIZONTAL, command=self.output_text.xview)
+        self.h_scrollbar.grid(row=1, column=0, sticky='ew')
+        
+        self.output_text.config(yscrollcommand=self.v_scrollbar.set, xscrollcommand=self.h_scrollbar.set)
         self.output_text.config(state=tk.DISABLED)
 
     def _create_word_cloud_ui(self, parent):
@@ -680,17 +697,27 @@ class BillAnalyzerUI:
         size = int(self.size_var.get())
         font_path = self._get_font_path(font_name)
 
-        # 注册自定义字体到tkinter
+        # 获取字体的真实名称
+        actual_font_name = font_name
         if font_path:
             try:
-                # 尝试用字体文件名作为字体族名注册
-                tkfont.Font(file=font_path, family=font_name)
-            except Exception:
-                pass
+                from PIL import ImageFont
+                pil_font = ImageFont.truetype(font_path, 12)
+                actual_font_name = pil_font.getname()[0]
 
-        # 更新文本框字体
+                # 加载字体到系统
+                abs_path = os.path.abspath(font_path)
+                ctypes.windll.gdi32.AddFontResourceW(abs_path)
+            except Exception as e:
+                logger.warning("加载字体失败: %s", e)
+
+        # 只更新字体，不改变其他配置
         if hasattr(self, 'output_text'):
-            self.output_text.config(font=(font_name, size))
+            font_config = self.output_text.cget('font')
+            try:
+                self.output_text.config(font=(actual_font_name, size))
+            except Exception:
+                self.output_text.config(font=(font_name, size))
 
         # 更新matplotlib字体设置
         if font_path:
