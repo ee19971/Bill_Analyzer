@@ -14,9 +14,7 @@ import re
 import logging
 import threading
 import tkinter as tk
-import tkinter.font as tkfont
 import ctypes
-import ctypes.wintypes
 import webbrowser
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -25,7 +23,7 @@ from matplotlib.font_manager import FontProperties, fontManager
 from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox, filedialog, ttk
-from PIL import Image, ImageDraw, ImageFont, ImageTk
+from PIL import ImageFont
 
 from cheng_xu import wx_csv, zfb_wy_csv, zfb_app_zhong_wen_csv, ci_yun
 from cheng_xu.ci_yun import _detect_encoding, _read_data_file
