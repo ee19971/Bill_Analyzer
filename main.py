@@ -389,7 +389,7 @@ class BillAnalyzerUI:
 
                 self.root.after(0, lambda: self._on_echarts_done(html_path, chart_label))
             except Exception as e:
-                self.root.after(0, lambda: self._on_echarts_error(str(e)))
+                self.root.after(0, lambda e=e: self._on_echarts_error(str(e)))
 
         threading.Thread(target=task, daemon=True).start()
 
@@ -452,7 +452,7 @@ class BillAnalyzerUI:
 
                 self.root.after(0, lambda: self._on_visualization_done(html_path, chart_label))
             except Exception as e:
-                self.root.after(0, lambda: self._on_visualization_error(str(e)))
+                self.root.after(0, lambda e=e: self._on_visualization_error(str(e)))
 
         threading.Thread(target=task, daemon=True).start()
 

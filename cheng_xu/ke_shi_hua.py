@@ -123,8 +123,14 @@ def load_data(filepath: str) -> pd.DataFrame:
     elif source in ('alipay_app', 'wechat'):
         rename_map = {'交易时间': '发生时间'}
         if source == 'wechat':
+            # 微信：如果同时存在'商品'和'备注'，先删除原来的'备注'列
+            if '商品' in df.columns and '备注' in df.columns:
+                df.drop(columns=['备注'], inplace=True)
             rename_map.update({'金额(元)': '金额', '商品': '备注'})
         else:
+            # 支付宝APP：如果同时存在'商品说明'和'备注'，先删除原来的'备注'列
+            if '商品说明' in df.columns and '备注' in df.columns:
+                df.drop(columns=['备注'], inplace=True)
             rename_map.update({'商品说明': '备注'})
         df.rename(columns=rename_map, inplace=True)
     else:
@@ -443,8 +449,9 @@ def _create_multi_year_category_pie(dataframe: pd.DataFrame) -> go.Figure:
 
     fig.update_layout(
         title=f"{year_range}年{account_name}支出分类汇总",
-        height=600, width=900,
-        legend=dict(orientation='h', yanchor='bottom', y=-0.2),
+        height=600, width=1100,
+        legend=dict(orientation='v', yanchor='middle', y=0.5, xanchor='left', x=1.02, maxheight=500),
+        margin=dict(r=200),
     )
     return fig
 
@@ -760,8 +767,9 @@ def create_category_pie(dataframe: pd.DataFrame) -> go.Figure:
 
     fig.update_layout(
         title=f"{year}年{account_name}支出分类",
-        height=600, width=900,
-        legend=dict(orientation='h', yanchor='bottom', y=-0.2),
+        height=600, width=1100,
+        legend=dict(orientation='v', yanchor='middle', y=0.5, xanchor='left', x=1.02, maxheight=500),
+        margin=dict(r=200),
     )
     return fig
 
@@ -826,7 +834,7 @@ def generate_chart_html(csv_path: str, output_dir: str,
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     static_js = os.path.join(project_root, 'cheng_xu', 'static', 'plotly-3.7.0.min.js')
     plot(fig, filename=output_path, include_plotlyjs=static_js,
-         config={'locale': 'zh-CN'})
+         auto_open=False, config={'locale': 'zh-CN'})
 
     with open(output_path, 'r', encoding='utf-8') as f:
         html_content = f.read()
