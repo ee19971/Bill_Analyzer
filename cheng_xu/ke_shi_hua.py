@@ -18,6 +18,7 @@
 """
 import os
 import re
+from datetime import datetime
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
@@ -830,7 +831,8 @@ def generate_chart_html(csv_path: str, output_dir: str,
     fig = creator_func(df_filtered)
 
     os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, f'消费分析-{chart_label}.html')
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_path = os.path.join(output_dir, f'消费分析-{chart_label}-{timestamp}.html')
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     static_js = os.path.join(project_root, 'cheng_xu', 'static', 'plotly-3.7.0.min.js')
     plot(fig, filename=output_path, include_plotlyjs=static_js,

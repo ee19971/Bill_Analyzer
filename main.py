@@ -14,6 +14,7 @@ import re
 import logging
 import threading
 import tkinter as tk
+import tkinter.font as tkfont
 import webbrowser
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -670,12 +671,30 @@ class BillAnalyzerUI:
         self._apply_font(self.font_var.get())
 
     def _apply_font(self, font_name):
-        """应用选中的字体
+        """应用选中的字体和字号到UI组件
 
         Args:
             font_name: 字体名称（不含扩展名）
         """
         self.font_var.set(font_name)
+        size = int(self.size_var.get())
+        font_path = self._get_font_path(font_name)
+
+        # 注册自定义字体到tkinter
+        if font_path:
+            try:
+                # 尝试用字体文件名作为字体族名注册
+                tkfont.Font(file=font_path, family=font_name)
+            except Exception:
+                pass
+
+        # 更新文本框字体
+        if hasattr(self, 'output_text'):
+            self.output_text.config(font=(font_name, size))
+
+        # 更新matplotlib字体设置
+        if font_path:
+            self._setup_matplotlib_font(os.path.basename(font_path))
 
     def _process_file(self):
         """处理账单文件（使用多线程避免 UI 阻塞）

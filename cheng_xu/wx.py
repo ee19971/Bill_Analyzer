@@ -116,7 +116,15 @@ def wx_csv(file_path: str) -> str:
     if is_excel:
         wx = pd.read_excel(file_path, skiprows=header_offset)
     else:
-        wx = pd.read_csv(file_path, skiprows=header_offset)
+        # 尝试不同编码读取CSV文件
+        for enc in ['utf-8', 'gb18030', 'gbk']:
+            try:
+                wx = pd.read_csv(file_path, skiprows=header_offset, encoding=enc)
+                break
+            except (UnicodeDecodeError, UnicodeError):
+                continue
+        else:
+            raise ValueError("无法识别文件编码，请检查文件格式")
 
     # 修复列错位问题
     wx = _fix_shifted_rows(wx)
